@@ -2,33 +2,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useStore } from "@/lib/store";
-import { Icon, Modal } from "@/components/ui";
-
-// Demo accounts only. Replace with a real /api/auth/login call when the backend is ready.
-const USERS = {
-  // hina: { pw: "hina123", role: "employee", to: "/board" },
-  hina: { pw: "hina123", role: "employee", to: "/" },
-  // admin: { pw: "admin123", role: "admin", to: "/dashboard" },
-  admin: { pw: "admin123", role: "admin", to: "/" },
-  super: { pw: "super123", role: "superadmin", to: "/platform" },
-};
-const QUICK = [["Employee", "hina"], ["Admin", "admin"], ["Superadmin", "super"]];
+import { HOME, useStore } from "@/lib/store";
+import { BrandLogo, Modal } from "@/components/ui";
 
 export default function Login() {
-  const { login } = useStore(), router = useRouter();
+  const { db, authenticate, login } = useStore(), router = useRouter();
   const [fp, setFp] = useState(false), [u, setU] = useState(""), [p, setP] = useState(""), [show, setShow] = useState(false), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
   const submit = (e) => {
     e.preventDefault();
-    const acc = USERS[u.trim().toLowerCase()];
     if (!u.trim() || !p) return setErr("Enter your username and password.");
-    if (!acc || acc.pw !== p) return setErr("Username or password is incorrect. Check both and try again.");
-    setErr(""); setBusy(true); login(acc.role); router.push(acc.to);
+    const acc = authenticate(u, p);
+    if (!acc) return setErr("Username or password is incorrect. Check both and try again.");
+    setErr(""); setBusy(true); login(acc); router.push(HOME[acc.role]);
   };
+  const quick = db?.accounts.filter((x) => ["hina", "admin", "super"].includes(x.username)).map((x) => [
+    x.role === "employee" ? "Employee" : x.role === "admin" ? "Admin" : "Superadmin",
+    x.username,
+    x.password,
+  ]) || [];
   return (
     <div className="login">
       <section className="hero"><div className="hero-art"><Image src="/images/login-gaming.png" alt="A wireless gaming controller lit in blue and purple" fill priority sizes="(max-width: 960px) 100vw, 55vw" className="hero-photo" /></div>
-        <span className="mark big"><Icon n="pad" size={28} /></span>
+        <BrandLogo size={64} />
         <h1>Every station, every minute, accounted for.</h1>
         <p>Prepaid wallets, live PS5 timers and automatic billing for your gaming zone.</p>
         <div className="hero-stats"><div><b>8</b><span>stations</span></div><div><b>Rs 300</b><span>per hour from</span></div><div><b>0</b><span>missed minutes</span></div></div>
@@ -44,14 +39,15 @@ export default function Login() {
           </label>
           <button type="button" className="eye fp" onClick={() => setFp(true)}>Forgot password?</button>
           {err && <div className="callout warn" role="alert">{err}</div>}
-          <button className="btn primary full lg" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          <button className="btn primary full lg" disabled={busy || !db}>{busy ? "Signing in…" : "Sign in"}</button>
           <div className="demo">
             <span>Demo accounts. Tap one to fill the form:</span>
-            <div className="chips">{QUICK.map(([l, k]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(USERS[k].pw); setErr(""); }}>{l}</button>)}</div>
+            <div className="chips">{quick.map(([l, k, password]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(password); setErr(""); }}>{l}</button>)}</div>
+            <small className="muted">Demo only: passwords are stored in this browser, not on a secure authentication server.</small>
           </div>
         </form>
       </section>
-    {fp && <Modal title="Forgot password" onClose={() => setFp(false)} foot={<button className="btn primary" onClick={() => setFp(false)}>Got it</button>}><p className="muted">Employees: ask your branch admin to reset your password from the Employees screen. Admins: contact the platform team.</p></Modal>}
+      {fp && <Modal title="Forgot password" onClose={() => setFp(false)} foot={<button className="btn primary" onClick={() => setFp(false)}>Got it</button>}><p className="muted">Employees: ask your branch admin to reset your password from the Employees screen. Branch admins: contact the platform team if you cannot sign in.</p></Modal>}
     </div>
   );
 }

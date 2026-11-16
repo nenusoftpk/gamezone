@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { AUDIT, REF0 } from "@/lib/data";
+import { AUDIT, EMP, REF0 } from "@/lib/data";
 
 export const RATES = { Standard: 300, Peak: 360, "VIP room": 450 }; // Rs per hour
 export const GAMES = ["EA FC 26", "Tekken 8", "Spider-Man 2", "God of War Ragnarök", "UFC 5", "Gran Turismo 7", "It Takes Two", "Call of Duty"];
@@ -65,6 +65,40 @@ const seed = () => {
   };
 };
 
+const initialAccounts = (tenants) => [
+  { id: "superadmin", username: "super", password: "super123", role: "superadmin", name: "Platform Team", active: true },
+  ...tenants.map((tenant, i) => ({
+    id: `branch-admin-${tenant.id}`,
+    username: ["admin", "playhub", "joystick", "levelup"][i] || `admin${tenant.id}`,
+    password: "admin123",
+    role: "admin",
+    name: tenant.owner,
+    tenantId: tenant.id,
+    active: true,
+  })),
+  ...EMP.map((employee, i) => ({
+    id: `employee-${employee.id}`,
+    username: ["hina", "zain", "maryam"][i] || `employee${employee.id}`,
+    password: ["hina123", "zain1234", "maryam123"][i] || "employee123",
+    role: "employee",
+    name: employee.name,
+    tenantId: tenants[0]?.id,
+    employeeId: employee.id,
+    active: employee.on,
+  })),
+];
+
+const hydrate = (stored) => {
+  const d = stored || seed();
+  if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
+  if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
+  if (d.user && !d.user.id) {
+    const account = d.accounts.find((x) => x.role === d.user.role && (x.role !== "admin" || x.tenantId === d.tenants?.[0]?.id));
+    if (account) d.user = { id: account.id, role: account.role, name: account.name, tenantId: account.tenantId };
+  }
+  return d;
+};
+
 const Ctx = createContext(null);
 export const useStore = () => useContext(Ctx);
 export function useNow() {
@@ -77,7 +111,7 @@ export function StoreProvider({ children }) {
   const [db, setDb] = useState(null);
   const [toast, setToast] = useState("");
   useEffect(() => {
-    try { setDb(JSON.parse(localStorage.getItem("gz-demo-v2")) || seed()); } catch { setDb(seed()); }
+    try { setDb(hydrate(JSON.parse(localStorage.getItem("gz-demo-v2")))); } catch { setDb(hydrate(null)); }
   }, []);
   useEffect(() => { if (db) localStorage.setItem("gz-demo-v2", JSON.stringify(db)); }, [db]);
   const say = useCallback((m) => { setToast(m); setTimeout(() => setToast(""), 2400); }, []);
@@ -87,10 +121,42 @@ export function StoreProvider({ children }) {
   const plog = (d, a, x) => d.platformAudit.unshift([a, who(d), x, Date.now()]);
   const cust = (d, id) => d.customers.find((c) => c.id === id);
   const nextNo = () => "R-" + (1001 + (db?.ledger.length || 0));
+  const authenticate = (username, password) => {
+    const account = db?.accounts.find((x) => x.username.toLowerCase() === username.trim().toLowerCase() && x.password === password && x.active);
+    if (!account) return null;
+    if (account.role === "admin" && !db.tenants.find((x) => x.id === account.tenantId && x.on)) return null;
+    if (account.role === "employee" && !db.employees.find((x) => x.id === account.employeeId && x.on)) return null;
+    return account;
+  };
+  const changeOwnPassword = (current, next) => {
+    const account = db?.accounts.find((x) => x.id === db.user?.id);
+    if (!account || account.password !== current) return "Current password is incorrect.";
+    up((d) => {
+      d.accounts.find((x) => x.id === account.id).password = next;
+      if (account.role === "superadmin") plog(d, "Password changed", "Platform account");
+      else log(d, "Password changed", "Own account");
+      return d;
+    });
+    return null;
+  };
+  const setAccountPassword = (accountId, next) => {
+    const actor = db?.user, target = db?.accounts.find((x) => x.id === accountId);
+    const allowed = actor?.role === "superadmin"
+      ? target?.role === "admin"
+      : actor?.role === "admin" && target?.role === "employee" && target.tenantId === actor.tenantId;
+    if (!allowed) return "You do not have permission to change this password.";
+    up((d) => {
+      d.accounts.find((x) => x.id === accountId).password = next;
+      if (target.role === "admin") plog(d, "Branch admin password changed", target.name);
+      else log(d, "Employee password reset", target.name);
+      return d;
+    });
+    return null;
+  };
 
   const api = {
-    db, say, nextNo,
-    login: (role) => up((d) => { d.user = { role, name: { employee: "Hina Qureshi", admin: "Ahmed Sheikh", superadmin: "Platform Team" }[role] }; return d; }),
+    db, say, nextNo, authenticate, changeOwnPassword, setAccountPassword,
+    login: (account) => up((d) => { d.user = { id: account.id, role: account.role, name: account.name, tenantId: account.tenantId }; return d; }),
     logout: () => up((d) => { d.user = null; return d; }),
     topUp: (customerId, amount, method, ref, no) => up((d) => {
       cust(d, customerId).balance += amount;
@@ -148,8 +214,24 @@ export function StoreProvider({ children }) {
     setStation: (id, patch) => up((d) => { Object.assign(d.stations.find((x) => x.id === id), patch); return d; }),
     // platform (superadmin)
     createTenant: (f) => up((d) => {
-      d.tenants.push({ id: Date.now(), name: f.name, owner: f.owner, plan: f.plan, status: "Trial", renewsAt: Date.now() + f.days * DAY, on: true });
+      const id = Date.now();
+      d.tenants.push({ id, name: f.name, owner: f.owner, plan: f.plan, status: "Trial", renewsAt: Date.now() + f.days * DAY, on: true });
+      d.accounts.push({ id: `branch-admin-${id}`, username: f.username, password: f.password, role: "admin", name: f.owner, tenantId: id, active: true });
       plog(d, "Branch created", `${f.name} · ${f.plan} · ${f.days}-day trial`); return d;
+    }),
+    createEmployee: (f) => up((d) => {
+      const id = Date.now();
+      d.employees.push({ id, name: f.name, role: "Cashier", shift: "Unassigned", limit: 300, on: true, tenantId: d.user.tenantId });
+      d.accounts.push({ id: `employee-${id}`, username: f.username, password: f.password, role: "employee", name: f.name, tenantId: d.user.tenantId, employeeId: id, active: true });
+      log(d, "Employee added", f.name); return d;
+    }),
+    toggleEmployee: (id) => up((d) => {
+      const employee = d.employees.find((x) => x.id === id && x.tenantId === d.user.tenantId);
+      if (!employee || d.user.role !== "admin") return d;
+      employee.on = !employee.on;
+      const account = d.accounts.find((x) => x.employeeId === id);
+      if (account) account.active = employee.on;
+      return d;
     }),
     toggleTenant: (id) => up((d) => {
       const t = d.tenants.find((x) => x.id === id); t.on = !t.on; t.status = t.on ? "Active" : "Suspended";
@@ -163,7 +245,7 @@ export function StoreProvider({ children }) {
       plog(d, "Payment recorded", `${t.name} · Rs ${amt.toLocaleString()} (${method})`); return d;
     }),
     setPlanPrice: (plan, patch) => up((d) => { Object.assign(d.plans[plan], patch); plog(d, "Plan updated", `${plan}: Rs ${d.plans[plan].price}`); return d; }),
-    reset: () => { localStorage.removeItem("gz-demo-v2"); setDb(seed()); },
+    reset: () => { localStorage.removeItem("gz-demo-v2"); setDb(hydrate(seed())); },
   };
   return <Ctx.Provider value={api}>{children}{toast && <div className="toast" role="status">{toast}</div>}</Ctx.Provider>;
 }
