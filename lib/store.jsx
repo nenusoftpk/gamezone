@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { AUDIT, EMP, REF0 } from "@/lib/data";
+import { AUDIT, EMP, EQUIP0, GAMES_LIB, REF0, STOCK0 } from "@/lib/data";
 
 export const RATES = { Standard: 300, Peak: 360, "VIP room": 450 }; // Rs per hour
 export const GAMES = ["EA FC 26", "Tekken 8", "Spider-Man 2", "God of War Ragnarök", "UFC 5", "Gran Turismo 7", "It Takes Two", "Call of Duty"];
@@ -47,6 +47,9 @@ const seed = () => {
     ],
     sessions: hist,
     ledger: [tp(1, 20, 0, 1000, "Cash"), tp(2, 95, 2, 2000, "Easypaisa"), tp(3, 210, 4, 1000, "JazzCash"), tp(4, 300, 3, 500, "Cash", "Zain Abbas")],
+    equipment: EQUIP0.map((item) => ({ ...item })),
+    gamesLibrary: GAMES_LIB.map((game) => ({ ...game })),
+    cafeStock: STOCK0.map((item) => ({ ...item })),
     refunds: REF0.map((r) => ({ id: r.id, customerId: ids[r.who] ?? null, amt: r.amt, why: r.why, by: r.by, st: r.st, t: r.t })),
     shifts: [{ id: 1, by: "Zain Abbas", t: t - 14 * 3600000, expected: 5400, counted: 5400 }, { id: 2, by: "Hina Qureshi", t: t - 26 * 3600000, expected: 4200, counted: 4150 }],
     audit: AUDIT.map(([a, u, d, at]) => [a, u, d, at]),
@@ -90,6 +93,11 @@ const initialAccounts = (tenants) => [
 
 const hydrate = (stored) => {
   const d = stored || seed();
+  if (!d.expenses) d.expenses = [];
+  if (!d.customerCredits) d.customerCredits = [];
+  if (!d.equipment) d.equipment = EQUIP0.map((item) => ({ ...item }));
+  if (!d.gamesLibrary) d.gamesLibrary = GAMES_LIB.map((game) => ({ ...game }));
+  if (!d.cafeStock) d.cafeStock = STOCK0.map((item) => ({ ...item }));
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
   if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
   if (d.user && !d.user.id) {
@@ -170,6 +178,87 @@ export function StoreProvider({ children }) {
       log(d, "Package sale", `${pkg.n} sold to ${cust(d, customerId).name} for Rs ${pkg.price}`); return d;
     }),
     addCustomer: (name, phone) => up((d) => { d.customers.push({ id: Date.now(), name, phone: phone || "—", balance: 0 }); log(d, "New customer", name); return d; }),
+    addExpense: (category, description, amount) => {
+      if (db?.user?.role !== "admin" || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
+      up((d) => {
+        const expense = { id: Date.now(), category, description, amount, t: Date.now(), by: who(d) };
+        d.expenses.unshift(expense);
+        log(d, "Expense recorded", `${category} · Rs ${amount} · ${description}`);
+        return d;
+      });
+      return true;
+    },
+    addCustomerCredit: (customerId, description, amount) => {
+      if (db?.user?.role !== "admin" || !db.customers.some((c) => c.id === customerId) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
+      up((d) => {
+        const credit = { id: Date.now(), customerId, description, amount, paid: 0, t: Date.now(), by: who(d), payments: [] };
+        d.customerCredits.unshift(credit);
+        log(d, "Customer credit recorded", `${cust(d, customerId).name} · Rs ${amount} · ${description}`);
+        return d;
+      });
+      return true;
+    },
+    repayCustomerCredit: (id, amount, method) => {
+      const credit = db?.customerCredits.find((x) => x.id === id);
+      if (db?.user?.role !== "admin" || !credit || !Number.isFinite(amount) || amount <= 0 || amount > credit.amount - credit.paid) return false;
+      up((d) => {
+        const entry = d.customerCredits.find((x) => x.id === id);
+        entry.paid += amount;
+        entry.payments.push({ amount, method, t: Date.now(), by: who(d) });
+        log(d, "Customer credit repayment", `${cust(d, entry.customerId).name} · Rs ${amount} (${method})`);
+        return d;
+      });
+      return true;
+    },
+    addEquipment: (name, category, total) => {
+      if (db?.user?.role !== "admin" || !name.trim() || !category.trim() || !Number.isInteger(total) || total < 1 || db.equipment.some((item) => item.n.toLowerCase() === name.trim().toLowerCase())) return false;
+      up((d) => {
+        d.equipment.push({ n: name.trim(), c: category.trim(), total, use: 0, repair: 0 });
+        log(d, "Equipment added", `${name.trim()} · ${total}`);
+        return d;
+      });
+      return true;
+    },
+    adjustEquipmentRepair: (name, delta) => {
+      const item = db?.equipment.find((entry) => entry.n === name);
+      if (db?.user?.role !== "admin" || !item || ![-1, 1].includes(delta) || item.repair + delta < 0 || item.use + item.repair + delta > item.total) return false;
+      up((d) => {
+        const equipment = d.equipment.find((entry) => entry.n === name);
+        equipment.repair += delta;
+        log(d, "Equipment repair count changed", `${name} · ${equipment.repair} in repair`);
+        return d;
+      });
+      return true;
+    },
+    addGame: (title, genre, rating, players, consoles) => {
+      if (db?.user?.role !== "admin" || !title.trim() || !genre.trim() || !rating.trim() || !players.trim() || !Number.isInteger(consoles) || consoles < 1 || db.gamesLibrary.some((game) => game.t.toLowerCase() === title.trim().toLowerCase())) return false;
+      up((d) => {
+        d.gamesLibrary.push({ t: title.trim(), g: genre.trim(), r: rating.trim(), p: players.trim(), n: consoles });
+        log(d, "Game added to library", `${title.trim()} · ${consoles} consoles`);
+        return d;
+      });
+      return true;
+    },
+    addCafeStock: (name, quantity, min, price) => {
+      if (db?.user?.role !== "admin" || !name.trim() || !Number.isInteger(quantity) || quantity < 0 || !Number.isInteger(min) || min < 0 || !Number.isFinite(price) || price <= 0 || db.cafeStock.some((item) => item.n.toLowerCase() === name.trim().toLowerCase())) return false;
+      up((d) => {
+        d.cafeStock.push({ n: name.trim(), q: quantity, min, price });
+        log(d, "Cafe stock item added", `${name.trim()} · ${quantity} in stock`);
+        return d;
+      });
+      return true;
+    },
+    adjustCafeStock: (name, delta) => {
+      const item = db?.cafeStock.find((entry) => entry.n === name);
+      if (db?.user?.role !== "admin" || !item || !Number.isInteger(delta) || delta === 0 || item.q + delta < 0) return false;
+      up((d) => {
+        const stock = d.cafeStock.find((entry) => entry.n === name);
+        stock.q += delta;
+        log(d, "Cafe stock adjusted", `${name} · ${delta > 0 ? "+" : ""}${delta} · ${stock.q} in stock`);
+        return d;
+      });
+      return true;
+    },
     start: (stationId, customerId, game, players) => up((d) => {
       const s = d.stations.find((x) => x.id === stationId);
       if (s.active || s.status !== "ok") return d; // one active session per station

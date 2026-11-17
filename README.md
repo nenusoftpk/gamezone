@@ -12,7 +12,7 @@ npm run build && npm start
 
 ## Structure
 - `app/login` role picker (demo login)
-- `app/(app)/board | customers | history | dashboard | stations | tenants` role pages inside the sidebar shell
+- `app/(app)/board | customers | history | dashboard | stations | tenants` role pages inside the sidebar shell; admin finance tracks expenses and customer credit, and admin inventory manages equipment, games and cafe stock
 - `lib/store.jsx` demo data store (localStorage) and all billing logic: cost = elapsed hours x rate snapshot
 - `components/` Shell, Modal/Icons, TopUp
 

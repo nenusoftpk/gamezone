@@ -44,6 +44,7 @@ export default function Board() {
   const [f, setF] = useState("all"), [startFor, setStartFor] = useState(null), [endFor, setEndFor] = useState(null), [top, setTop] = useState(null), [mv, setMv] = useState(null), [to, setTo] = useState("");
   const [form, setForm] = useState({ c: 0, g: GAMES[0], p: 2 });
   if (!db) return null;
+  const games = db.gamesLibrary.map((game) => game.t);
   const live = db.stations.filter((s) => s.active).length, free = db.stations.filter((s) => !s.active && s.status === "ok").length;
   const list = db.stations.filter((s) => f === "all" || (f === "live" ? s.active : !s.active && s.status === "ok"));
   const sc = startFor && db.customers.find((c) => c.id === +form.c), rate = startFor && RATES[startFor.plan];
@@ -56,12 +57,12 @@ export default function Board() {
         <button className="btn primary" onClick={() => setTop(db.customers[0].id)}><Icon n="plus" size={16} />Wallet top-up</button>
       </PageHead>
       <div className="tabs">{[["all", "All stations"], ["live", "Playing"], ["free", "Available"]].map(([k, l]) => <button key={k} className={f === k ? "on" : ""} onClick={() => setF(k)}>{l}</button>)}</div>
-      <div className="stations">{list.map((s) => <Card key={s.id} s={s} now={now} db={db} onStart={(x) => { setStartFor(x); setForm({ c: db.customers[0].id, g: GAMES[0], p: 2 }); }} onEnd={setEndFor} onTop={setTop} onMove={(x) => { setMv(x); setTo(freeSt[0]?.id || ""); }} />)}</div>
+      <div className="stations">{list.map((s) => <Card key={s.id} s={s} now={now} db={db} onStart={(x) => { setStartFor(x); setForm({ c: db.customers[0].id, g: games[0] || GAMES[0], p: 2 }); }} onEnd={setEndFor} onTop={setTop} onMove={(x) => { setMv(x); setTo(freeSt[0]?.id || ""); }} />)}</div>
 
       {startFor && <Modal title={`Start session · ${startFor.name}`} onClose={() => setStartFor(null)}
         foot={<><button className="btn" onClick={() => setStartFor(null)}>Cancel</button><button className="btn primary" disabled={!canStart} onClick={() => { start(startFor.id, +form.c, form.g, +form.p); setStartFor(null); say("Session started"); }}>Start session</button></>}>
         <label>Customer<select value={form.c} onChange={(e) => setForm({ ...form, c: e.target.value })}>{db.customers.map((c) => <option key={c.id} value={c.id}>{c.name} · {money(c.balance)}</option>)}</select></label>
-        <label>Game<select value={form.g} onChange={(e) => setForm({ ...form, g: e.target.value })}>{GAMES.map((g) => <option key={g}>{g}</option>)}</select></label>
+        <label>Game<select value={form.g} onChange={(e) => setForm({ ...form, g: e.target.value })}>{games.map((g) => <option key={g}>{g}</option>)}</select></label>
         <label>Players<select value={form.p} onChange={(e) => setForm({ ...form, p: e.target.value })}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select></label>
         <div className={"callout " + (canStart ? "" : "warn")}>
           {canStart ? <>Rate <b>{money(rate)}/hr</b>. This wallet covers about <b>{Math.floor(sc.balance / (rate / 60))} minutes</b>.</> : <>This wallet needs at least <b>{money(rate / 6)}</b> (10 minutes) to start. Top up first.</>}

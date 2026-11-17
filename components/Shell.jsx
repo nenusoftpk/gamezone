@@ -9,7 +9,7 @@ const NAV = {
   employee: [["Counter", [["/board", "Live board", "board"], ["/customers", "Customers", "users"], ["/sell-package", "Sell package", "box"], ["/cash", "Cash collection", "wallet"], ["/refund-requests", "Refund requests", "undo"], ["/history", "History", "clock"]]]],
   admin: [
     ["Overview", [["/dashboard", "Dashboard", "chart"], ["/board", "Live board", "board"], ["/customers", "Customers", "users"]]],
-    ["Money", [["/cash", "Cash collection", "wallet"], ["/reports", "Reports", "file"], ["/refunds", "Refunds", "undo"], ["/history", "History", "clock"]]],
+    ["Money", [["/cash", "Cash collection", "wallet"], ["/reports", "Reports", "file"], ["/finance", "Loans & expenses", "wallet"], ["/refunds", "Refunds", "undo"], ["/history", "History", "clock"]]],
     ["Setup", [["/stations", "Stations & rates", "grid"], ["/packages", "Packages", "box"], ["/inventory", "Inventory", "box"], ["/employees", "Employees", "users"], ["/audit", "Audit log", "shield"], ["/settings", "Settings", "gear"], ["/account", "Change password", "shield"]]],
   ],
   superadmin: [["Platform", [["/platform", "Overview", "chart"], ["/tenants", "Branches", "building"], ["/plans", "Plans", "box"], ["/subscriptions", "Payments", "wallet"], ["/platform-audit", "Platform audit", "shield"], ["/account", "Change password", "shield"]]]],
