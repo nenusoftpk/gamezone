@@ -20,10 +20,10 @@ const seed = () => {
   const t = Date.now();
   const mk = (id, name, room, model, plan, active = null, status = "ok") => ({ id, name, room, model, plan, active, status });
   const act = (customerId, game, players, rate, mins, paused = 0) => ({
-    customerId, game, players, rate, t0: t - mins * MIN, pausedMs: paused ? 6 * MIN : 0, pausedAt: paused ? t - paused * MIN : 0,
+    customerId, game, players, rate, by: "Hina Qureshi", t0: t - mins * MIN, pausedMs: paused ? 6 * MIN : 0, pausedAt: paused ? t - paused * MIN : 0,
   });
   const hist = [[0, "EA FC 26", "PS5-04", 45, 225, 40], [2, "Spider-Man 2", "PS5-07", 90, 675, 95], [1, "UFC 5", "PS5-02", 30, 150, 150], [4, "Tekken 8", "PS5-05", 60, 300, 210], [3, "God of War Ragnarök", "PS5-03", 75, 375, 260], [2, "Gran Turismo 7", "PS5-08", 120, 900, 330]]
-    .map(([c, g, s, d, amt, agoM], i) => ({ id: "S" + (100 + i), customerId: c, game: g, station: s, minutes: d, amount: amt, t: t - agoM * MIN }));
+    .map(([c, g, s, d, amt, agoM], i) => ({ id: "S" + (100 + i), customerId: c, game: g, station: s, minutes: d, amount: amt, by: i % 2 ? "Zain Abbas" : "Hina Qureshi", t: t - agoM * MIN }));
   const tp = (n, agoM, c, amount, method, by = "Hina Qureshi") => ({ id: "L" + n, no: "R-100" + n, t: t - agoM * MIN, customerId: c, type: "topup", amount, method, ref: "", by });
   const ids = { "Bilal Ahmed": 3, "Hamza Khan": 1, "Sara Malik": 2 };
   return {
@@ -98,6 +98,15 @@ const hydrate = (stored) => {
   if (!d.equipment) d.equipment = EQUIP0.map((item) => ({ ...item }));
   if (!d.gamesLibrary) d.gamesLibrary = GAMES_LIB.map((game) => ({ ...game }));
   if (!d.cafeStock) d.cafeStock = STOCK0.map((item) => ({ ...item }));
+  d.sessions.forEach((session) => {
+    if (session.paid === undefined) session.paid = session.amount;
+    if (session.due === undefined) session.due = 0;
+    if (!session.payments) session.payments = [];
+    if (!session.billingMode) session.billingMode = "wallet";
+  });
+  d.stations.forEach((station) => {
+    if (station.active && !station.active.billingMode) station.active.billingMode = "wallet";
+  });
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
   if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
   if (d.user && !d.user.id) {
@@ -259,10 +268,12 @@ export function StoreProvider({ children }) {
       });
       return true;
     },
-    start: (stationId, customerId, game, players) => up((d) => {
+    start: (stationId, customerId, game, players, billingMode = "wallet") => up((d) => {
       const s = d.stations.find((x) => x.id === stationId);
-      if (s.active || s.status !== "ok") return d; // one active session per station
-      s.active = { customerId, game, players, rate: RATES[s.plan], t0: Date.now(), pausedMs: 0, pausedAt: 0 };
+      if (!s) return d;
+      const customer = cust(d, customerId), rate = RATES[s.plan];
+      if (s.active || s.status !== "ok" || !customer || !["wallet", "checkout"].includes(billingMode) || (billingMode === "wallet" && customer.balance < rate / 6)) return d;
+      s.active = { customerId, game, players, billingMode, by: who(d), rate, t0: Date.now(), pausedMs: 0, pausedAt: 0 };
       log(d, "Session start", `${s.name} · ${game} · ${cust(d, customerId).name}`); return d;
     }),
     pause: (stationId) => up((d) => {
@@ -278,11 +289,42 @@ export function StoreProvider({ children }) {
     end: (stationId) => up((d) => {
       const s = d.stations.find((x) => x.id === stationId), a = s.active, now = Date.now();
       const amount = Math.round(cost(a, now)), c = cust(d, a.customerId);
-      c.balance = Math.max(0, c.balance - amount);
-      d.sessions.unshift({ id: "S" + now, customerId: a.customerId, game: a.game, station: s.name, minutes: Math.round(elapsed(a, now) / MIN), amount, t: now });
-      d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId: a.customerId, type: "debit", amount: -amount, method: s.name, ref: "", by: who(d) });
-      log(d, "Session end", `${s.name} · ${c.name} · Rs ${amount}`); s.active = null; return d;
+      const walletPaid = Math.min(c.balance, amount), due = amount - walletPaid;
+      c.balance -= walletPaid;
+      d.sessions.unshift({ id: "S" + now, customerId: a.customerId, game: a.game, station: s.name, minutes: Math.round(elapsed(a, now) / MIN), amount, paid: walletPaid, due, payments: [], billingMode: a.billingMode || "wallet", by: a.by || who(d), t: now });
+      if (walletPaid > 0) d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId: a.customerId, type: "debit", amount: -walletPaid, method: s.name, ref: "", by: who(d) });
+      log(d, "Session end", `${s.name} · ${c.name} · Rs ${amount}${due ? ` · Rs ${due} due at checkout` : ""}`); s.active = null; return d;
     }),
+    checkoutSession: (id, method, ref) => {
+      const session = db?.sessions.find((entry) => entry.id === id);
+      const customer = session && db.customers.find((entry) => entry.id === session.customerId);
+      const walletApplied = customer ? Math.min(customer.balance, session.due) : 0;
+      const toCollect = session ? session.due - walletApplied : 0;
+      if (!["admin", "employee"].includes(db?.user?.role) || !session || session.due <= 0 || !customer
+        || (toCollect > 0 && (!["Cash", "Easypaisa", "JazzCash", "Bank transfer"].includes(method) || (method !== "Cash" && !ref?.trim())))) return false;
+      up((d) => {
+        const bill = d.sessions.find((entry) => entry.id === id);
+        if (!bill || bill.due <= 0) return d;
+        const c = cust(d, bill.customerId), now = Date.now(), wallet = Math.min(c.balance, bill.due);
+        c.balance -= wallet;
+        bill.paid += wallet;
+        bill.due -= wallet;
+        if (wallet > 0) {
+          bill.payments.push({ amount: wallet, method: "Wallet", ref: "", t: now, by: who(d) });
+          d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId: bill.customerId, type: "debit", amount: -wallet, method: "Session checkout", ref: bill.id, by: who(d) });
+        }
+        const collected = bill.due, reference = ref?.trim() || "";
+        if (collected > 0) {
+          bill.paid += collected;
+          bill.due = 0;
+          bill.payments.push({ amount: collected, method, ref: reference, t: now, by: who(d) });
+          d.ledger.unshift({ id: "L" + now + "-checkout", no: "", t: now, customerId: bill.customerId, type: "session_payment", amount: collected, method, ref: reference, sessionId: id, by: who(d) });
+        }
+        log(d, "Session bill paid", `${c.name} · Rs ${wallet} from wallet${collected ? ` and Rs ${collected} (${method})` : ""}`);
+        return d;
+      });
+      return true;
+    },
     requestRefund: (customerId, amt, why) => up((d) => {
       d.refunds.unshift({ id: Date.now(), customerId, amt, why, by: who(d), st: "pending", t: Date.now() });
       log(d, "Refund request", `Rs ${amt} for ${cust(d, customerId)?.name || "walk-in"}`); return d;

@@ -8,11 +8,14 @@ export default function Reports() {
   if (!db) return null;
   const grp = (rows, key) => Object.entries(rows.reduce((o, r) => { const k = key(r); (o[k] ||= { n: 0, a: 0 }); o[k].n++; o[k].a += r.amount; return o; }, {})).map(([k, v]) => [k, v.n, v.a]);
   const tops = db.ledger.filter((l) => l.type === "topup");
+  const checkouts = db.ledger.filter((l) => l.type === "session_payment");
   const T = {
     station: ["Station", "Sessions", "Session revenue", grp(db.sessions, (s) => s.station)],
     game: ["Game", "Sessions", "Session revenue", grp(db.sessions, (s) => s.game)],
     method: ["Payment method", "Top-ups", "Cash collected", grp(tops, (l) => l.method)],
     emp: ["Employee", "Top-ups", "Cash collected", grp(tops, (l) => l.by)],
+    checkoutMethod: ["Payment method", "Bills paid", "Checkout collected", grp(checkouts, (l) => l.method)],
+    checkoutEmployee: ["Employee", "Bills paid", "Checkout collected", grp(checkouts, (l) => l.by)],
   };
   const [c1, c2, c3, rows] = T[tab] || [];
   const total = rows?.reduce((a, r) => a + r[2], 0) || 0;
@@ -32,7 +35,7 @@ export default function Reports() {
   return (
     <>
       <PageHead title="Reports" sub="Session revenue, top-ups and cafe stock are reported separately"><button className="btn" onClick={csv}>Export CSV</button></PageHead>
-      <div className="tabs">{[["station", "By station"], ["game", "By game"], ["method", "By payment method"], ["emp", "By employee"], ["cafe", "Cafe stock"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{[["station", "By station"], ["game", "By game"], ["method", "Top-ups by method"], ["emp", "Top-ups by employee"], ["checkoutMethod", "Checkout by method"], ["checkoutEmployee", "Checkout by employee"], ["cafe", "Cafe stock"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</div>
       <div className="panel">{tab === "cafe" ? <table>
         <thead><tr><th>Product</th><th className="r">In stock</th><th className="r">Reorder at</th><th className="r">Selling price</th><th>Status</th></tr></thead>
         <tbody>{db.cafeStock.length ? <>

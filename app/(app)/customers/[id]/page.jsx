@@ -13,8 +13,8 @@ export default function Customer() {
   const c = db.customers.find((x) => x.id === +id);
   if (!c) return <><Link className="back" href="/customers">← Customers</Link><div className="panel pad">This customer was not found. Go back to the list and pick another.</div></>;
   const led = db.ledger.filter((l) => l.customerId === c.id), ses = db.sessions.filter((s) => s.customerId === c.id);
-  const topped = led.filter((l) => l.type !== "debit" && l.type !== "refund").reduce((a, l) => a + l.amount, 0), spent = ses.reduce((a, s) => a + s.amount, 0);
-  const kind = { topup: ["Top-up", "live"], package: ["Package", "live"], refund: ["Refund", "low"], debit: ["Session", "paused"] };
+  const topped = led.filter((l) => l.type === "topup" || l.type === "package").reduce((a, l) => a + l.amount, 0), spent = ses.reduce((a, s) => a + s.amount, 0);
+  const kind = { topup: ["Top-up", "live"], package: ["Package", "live"], refund: ["Refund", "low"], debit: ["Session", "paused"], session_payment: ["Session checkout", "live"] };
   return (
     <>
       <Link className="back" href="/customers">← Customers</Link>

@@ -8,7 +8,7 @@ export default function Cash() {
   const [float, setFloat] = useState(2000), [count, setCount] = useState(""), [closed, setClosed] = useState(false);
   if (!db) return null;
   const mine = db.user.role === "employee";
-  const tops = db.ledger.filter((l) => (l.type === "topup" || l.type === "package") && (!mine || l.by === db.user.name));
+  const tops = db.ledger.filter((l) => (l.type === "topup" || l.type === "package" || l.type === "session_payment") && (!mine || l.by === db.user.name));
   const paid = (l) => (l.type === "package" ? l.paid : l.amount);
   const by = tops.reduce((o, l) => ({ ...o, [l.method]: (o[l.method] || 0) + paid(l) }), {});
   const cash = by.Cash || 0, digital = Object.entries(by).filter(([k]) => k !== "Cash").reduce((a, [, v]) => a + v, 0);
@@ -21,8 +21,8 @@ export default function Cash() {
         <button className="btn primary" disabled={count === "" || closed} onClick={() => { closeShift(expected, +count); setClosed(true); say("Shift closed and saved"); }}>{closed ? "Shift closed" : "Close shift"}</button>
       </PageHead>
       <div className="kpis">
-        <div className="kpi"><span>Cash received</span><b>{money(cash)}</b><small>Top-ups and packages</small></div>
-        <div className="kpi"><span>Digital received</span><b>{money(digital)}</b><small>Easypaisa, JazzCash, bank</small></div>
+        <div className="kpi"><span>Cash received</span><b>{money(cash)}</b><small>Top-ups, packages and checkouts</small></div>
+        <div className="kpi"><span>Digital received</span><b>{money(digital)}</b><small>Wallet and session payments</small></div>
         <div className="kpi"><span>Opening float</span><b>{money(float)}</b><small>Cash in drawer at start</small></div>
         <div className="kpi"><span>Expected in drawer</span><b>{money(expected)}</b><small>Float + cash received</small></div>
       </div>
@@ -38,7 +38,7 @@ export default function Cash() {
           {Object.entries(by).map(([k, v]) => <div className="line" key={k}><span>{k}</span><b>{money(v)}</b></div>)}
         </section>
         <section className="panel pad"><h3>Entries this shift</h3>
-          {tops.map((l) => <div className="line" key={l.id}><span>{timeStr(l.t)} · {db.customers.find((c) => c.id === l.customerId)?.name}<br /><small className="muted">{l.method} · {l.no}</small></span><b className="pos">+{money(paid(l))}</b></div>)}
+          {tops.map((l) => <div className="line" key={l.id}><span>{timeStr(l.t)} · {db.customers.find((c) => c.id === l.customerId)?.name}<br /><small className="muted">{l.type === "session_payment" ? "Session checkout" : l.type === "package" ? "Package" : "Top-up"} · {l.method}{l.ref ? ` · ${l.ref}` : ""}{l.no ? ` · ${l.no}` : ""}</small></span><b className="pos">+{money(paid(l))}</b></div>)}
           {!tops.length && <p className="muted">No collections yet in this shift.</p>}
         </section>
       </div>
