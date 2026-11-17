@@ -53,7 +53,7 @@ export default function Login() {
           <label>Username<input autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} placeholder="e.g. hina" autoFocus /></label>
           <label>Password
             <div className="pw"><input type={show ? "text" : "password"} autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} placeholder="Your password" />
-              <button type="button" className="eye" onClick={() => setShow(!show)} aria-label={show ? "Hide password" : "Show password"}>{show ? "Hide" : "Show"}</button></div>
+              <button type="button" className="eye" onClick={() => setShow(!show)} aria-label={show ? "Hide password" : "Show password"} aria-pressed={show}><Icon n={show ? "eyeOff" : "eye"} /></button></div>
           </label>
           <button type="button" className="eye fp" onClick={() => setFp(true)}>Forgot password?</button>
           {err && <div className="callout warn" role="alert">{err}</div>}
