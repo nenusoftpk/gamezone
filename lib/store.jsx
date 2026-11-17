@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { AUDIT, EMP, EQUIP0, GAMES_LIB, REF0, STOCK0 } from "@/lib/data";
+import { getDemoVideoSource, isSecureWebUrl } from "@/lib/resources";
 
 export const RATES = { Standard: 300, Peak: 360, "VIP room": 450 }; // Rs per hour
 export const GAMES = ["EA FC 26", "Tekken 8", "Spider-Man 2", "God of War Ragnarök", "UFC 5", "Gran Turismo 7", "It Takes Two", "Call of Duty"];
@@ -64,6 +65,7 @@ const seed = () => {
       { id: 1, tenantId: 1, amt: 15000, t: t - 3 * DAY, method: "Bank transfer", ref: "TRX-88231" },
       { id: 2, tenantId: 2, amt: 8000, t: t - 10 * DAY, method: "Easypaisa", ref: "EP-120045" },
     ],
+    resources: { mobileUrl: "", desktopUrl: "", videos: [] },
     platformAudit: [["Branch suspended", "Platform Team", "Level Up Islamabad: payment overdue 9 days", t - 9 * DAY], ["Payment recorded", "Platform Team", "PlayHub Karachi · Rs 8,000", t - 10 * DAY]],
   };
 };
@@ -93,6 +95,10 @@ const initialAccounts = (tenants) => [
 
 const hydrate = (stored) => {
   const d = stored || seed();
+  if (!d.resources) d.resources = { mobileUrl: "", desktopUrl: "", videos: [] };
+  if (!Array.isArray(d.resources.videos)) d.resources.videos = [];
+  if (typeof d.resources.mobileUrl !== "string") d.resources.mobileUrl = "";
+  if (typeof d.resources.desktopUrl !== "string") d.resources.desktopUrl = "";
   if (!d.expenses) d.expenses = [];
   if (!d.customerCredits) d.customerCredits = [];
   if (!d.equipment) d.equipment = EQUIP0.map((item) => ({ ...item }));
@@ -376,6 +382,43 @@ export function StoreProvider({ children }) {
       plog(d, "Payment recorded", `${t.name} · Rs ${amt.toLocaleString()} (${method})`); return d;
     }),
     setPlanPrice: (plan, patch) => up((d) => { Object.assign(d.plans[plan], patch); plog(d, "Plan updated", `${plan}: Rs ${d.plans[plan].price}`); return d; }),
+    updatePublicDownloads: (mobileUrl, desktopUrl) => {
+      if (db?.user?.role !== "superadmin") return "Only a superadmin can update public downloads.";
+      if ([mobileUrl, desktopUrl].some((url) => url && !isSecureWebUrl(url.trim()))) return "Download links must be valid HTTPS URLs.";
+      up((d) => {
+        d.resources.mobileUrl = mobileUrl.trim();
+        d.resources.desktopUrl = desktopUrl.trim();
+        plog(d, "Download links updated", "Public app downloads");
+        return d;
+      });
+      return null;
+    },
+    saveDemoVideo: (id, title, url) => {
+      const cleanTitle = title.trim(), cleanUrl = url.trim();
+      if (db?.user?.role !== "superadmin") return "Only a superadmin can manage demo videos.";
+      if (!cleanTitle || cleanTitle.length > 100) return "Enter a video title of 1–100 characters.";
+      if (!getDemoVideoSource(cleanUrl)) return "Use a secure YouTube, Vimeo, or direct MP4, WebM, or Ogg video URL.";
+      if (id && !db.resources.videos.some((video) => video.id === id)) return "That demo video no longer exists.";
+      up((d) => {
+        const existing = d.resources.videos.find((video) => video.id === id);
+        if (existing) Object.assign(existing, { title: cleanTitle, url: cleanUrl });
+        else d.resources.videos.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: cleanTitle, url: cleanUrl });
+        plog(d, id ? "Demo video updated" : "Demo video added", cleanTitle);
+        return d;
+      });
+      return null;
+    },
+    deleteDemoVideo: (id) => {
+      if (db?.user?.role !== "superadmin") return "Only a superadmin can manage demo videos.";
+      const video = db.resources.videos.find((entry) => entry.id === id);
+      if (!video) return "That demo video no longer exists.";
+      up((d) => {
+        d.resources.videos = d.resources.videos.filter((entry) => entry.id !== id);
+        plog(d, "Demo video removed", video.title);
+        return d;
+      });
+      return null;
+    },
     reset: () => { localStorage.removeItem("gz-demo-v2"); setDb(hydrate(seed())); },
   };
   return <Ctx.Provider value={api}>{children}{toast && <div className="toast" role="status">{toast}</div>}</Ctx.Provider>;

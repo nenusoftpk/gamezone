@@ -12,7 +12,7 @@ const NAV = {
     ["Money", [["/cash", "Cash collection", "wallet"], ["/reports", "Reports", "file"], ["/finance", "Loans & expenses", "wallet"], ["/refunds", "Refunds", "undo"], ["/history", "History", "clock"]]],
     ["Setup", [["/stations", "Stations & rates", "grid"], ["/packages", "Packages", "box"], ["/inventory", "Inventory", "box"], ["/employees", "Employees", "users"], ["/audit", "Audit log", "shield"], ["/settings", "Settings", "gear"], ["/account", "Change password", "shield"]]],
   ],
-  superadmin: [["Platform", [["/platform", "Overview", "chart"], ["/tenants", "Branches", "building"], ["/plans", "Plans", "box"], ["/subscriptions", "Payments", "wallet"], ["/platform-audit", "Platform audit", "shield"], ["/account", "Change password", "shield"]]]],
+  superadmin: [["Platform", [["/platform", "Overview", "chart"], ["/tenants", "Branches", "building"], ["/plans", "Plans", "box"], ["/subscriptions", "Payments", "wallet"], ["/resources", "Downloads & demos", "file"], ["/platform-audit", "Platform audit", "shield"], ["/account", "Change password", "shield"]]]],
 };
 export default function Shell({ children }) {
   const { db, logout } = useStore();

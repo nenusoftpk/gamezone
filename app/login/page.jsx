@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { HOME, useStore } from "@/lib/store";
-import { BrandLogo, Modal } from "@/components/ui";
+import { BrandLogo, Icon, Modal } from "@/components/ui";
 
 export default function Login() {
   const { db, authenticate, login } = useStore(), router = useRouter();
@@ -27,6 +28,23 @@ export default function Login() {
         <h1>Every station, every minute, accounted for.</h1>
         <p>Prepaid wallets, live PS5 timers and automatic billing for your gaming zone.</p>
         <div className="hero-stats"><div><b>8</b><span>stations</span></div><div><b>Rs 300</b><span>per hour from</span></div><div><b>0</b><span>missed minutes</span></div></div>
+        <div className="public-links" aria-label="App downloads and demo videos">
+          <div className="download-grid">
+            {[
+              { label: "Mobile app", detail: "Download for mobile", url: db?.resources?.mobileUrl, icon: "mobile", style: "mobile" },
+              { label: "Desktop app", detail: "Install on desktop", url: db?.resources?.desktopUrl, icon: "desktop", style: "desktop" },
+            ].map(({ label, detail, url, icon, style }) => {
+              const content = <>
+                <span className={"download-icon " + style}><Icon n={icon} size={21} /></span>
+                <span className="download-copy"><strong>{label}</strong><small>{url ? detail : "Coming soon"}</small></span>
+                <span className="download-arrow"><Icon n="download" size={18} /></span>
+              </>;
+              return url
+                ? <a className="download-card" key={label} href={url} target="_blank" rel="noopener noreferrer">{content}</a>
+                : <button className="download-card" key={label} type="button" disabled title="Download link not configured">{content}</button>;
+            })}
+          </div>
+        </div>
       </section>
       <section className="roles">
         <form className="lf" onSubmit={submit} noValidate>
@@ -39,7 +57,8 @@ export default function Login() {
           </label>
           <button type="button" className="eye fp" onClick={() => setFp(true)}>Forgot password?</button>
           {err && <div className="callout warn" role="alert">{err}</div>}
-          <button className="btn primary full lg" disabled={busy || !db}>{busy ? "Signing in…" : "Sign in"}</button>
+          <button className="btn primary full lg" disabled={busy || !db}><Icon n="login" />{busy ? "Signing in…" : "Sign in"}</button>
+          <Link className="btn demo-form-link" href="/demo-videos"><Icon n="video" />Watch demo videos</Link>
           <div className="demo">
             <span>Demo accounts. Tap one to fill the form:</span>
             <div className="chips">{quick.map(([l, k, password]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(password); setErr(""); }}>{l}</button>)}</div>
