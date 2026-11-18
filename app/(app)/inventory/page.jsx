@@ -9,12 +9,14 @@ const EQUIPMENT_TYPES = ["Console", "Controller", "Display", "Audio", "Cable", "
 
 export default function Inventory() {
   const { db, addEquipment, adjustEquipmentRepair, addGame, addCafeStock, adjustCafeStock, say } = useStore();
-  const [tab, setTab] = useState("eq"), [adding, setAdding] = useState(false);
+  const employee = db?.user?.role === "employee";
+  const [tab, setTab] = useState(employee ? "cf" : "eq"), [adding, setAdding] = useState(false);
   const [name, setName] = useState(""), [category, setCategory] = useState(EQUIPMENT_TYPES[0]), [total, setTotal] = useState("");
   const [genre, setGenre] = useState(""), [rating, setRating] = useState("E"), [players, setPlayers] = useState("1"), [consoles, setConsoles] = useState("");
   const [quantity, setQuantity] = useState(""), [min, setMin] = useState(""), [price, setPrice] = useState("");
   if (!db) return null;
 
+  const activeTab = employee ? "cf" : tab;
   const low = db.cafeStock.filter((item) => item.q < item.min).length;
   const openAdd = () => { setName(""); setCategory(EQUIPMENT_TYPES[0]); setTotal(""); setGenre(""); setRating("E"); setPlayers("1"); setConsoles(""); setQuantity(""); setMin(""); setPrice(""); setAdding(true); };
   const closeAdd = () => setAdding(false);
@@ -36,23 +38,23 @@ export default function Inventory() {
 
   return (
     <>
-      <PageHead title="Inventory" sub="Manage equipment, games and cafe stock">
-        <button className="btn primary" onClick={openAdd}>Add {tab === "eq" ? "equipment" : tab === "gm" ? "game" : "cafe item"}</button>
+      <PageHead title={employee ? "Cafe inventory" : "Inventory"} sub={employee ? "View cafe stock and items that need reordering" : "Manage equipment, games and cafe stock"}>
+        {!employee && <button className="btn primary" onClick={openAdd}>Add {tab === "eq" ? "equipment" : tab === "gm" ? "game" : "cafe item"}</button>}
       </PageHead>
-      <div className="tabs">{TABS.map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} onClick={() => setTab(key)}>{label}{key === "cf" && low > 0 ? ` (${low} low)` : ""}</button>)}</div>
+      {!employee && <div className="tabs">{TABS.map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} onClick={() => setTab(key)}>{label}{key === "cf" && low > 0 ? ` (${low} low)` : ""}</button>)}</div>}
       <div className="panel">
-        {tab === "eq" && <table><thead><tr><th>Item</th><th>Type</th><th className="r">Total</th><th className="r">In use</th><th className="r">In repair</th><th className="r">Free</th><th>Usage</th></tr></thead>
+        {!employee && activeTab === "eq" && <table><thead><tr><th>Item</th><th>Type</th><th className="r">Total</th><th className="r">In use</th><th className="r">In repair</th><th className="r">Free</th><th>Usage</th></tr></thead>
           <tbody>{db.equipment.map((item) => <tr key={item.n}><td><b>{item.n}</b></td><td>{item.c}</td><td className="r">{item.total}</td><td className="r">{item.use}</td>
             <td className="r"><span className="qty"><button disabled={item.repair === 0} onClick={() => adjustEquipmentRepair(item.n, -1)}>−</button>{item.repair}<button disabled={item.use + item.repair >= item.total} onClick={() => adjustEquipmentRepair(item.n, 1)}>+</button></span></td>
             <td className="r"><b>{item.total - item.use - item.repair}</b></td><td><div className="prog"><i style={{ width: (item.use / item.total) * 100 + "%" }} /></div></td></tr>)}
             {!db.equipment.length && <tr><td colSpan="7" className="empty">No equipment has been added.</td></tr>}</tbody></table>}
-        {tab === "gm" && <div className="covers">{db.gamesLibrary.map((game) => <div className="cover" key={game.t}><GameCover title={game.t} w={150} /><b>{game.t}</b><small>{game.g} · {game.p}P · rated {game.r} · on {game.n} consoles</small></div>)}
+        {!employee && activeTab === "gm" && <div className="covers">{db.gamesLibrary.map((game) => <div className="cover" key={game.t}><GameCover title={game.t} w={150} /><b>{game.t}</b><small>{game.g} · {game.p}P · rated {game.r} · on {game.n} consoles</small></div>)}
           {!db.gamesLibrary.length && <p className="empty">No games have been added to the library.</p>}</div>}
-        {tab === "cf" && <table><thead><tr><th>Product</th><th className="r">Price</th><th className="r">In stock</th><th>Status</th><th className="r">Adjust stock</th></tr></thead>
+        {activeTab === "cf" && <table><thead><tr><th>Product</th><th className="r">Price</th><th className="r">In stock</th><th>Status</th>{!employee && <th className="r">Adjust stock</th>}</tr></thead>
           <tbody>{db.cafeStock.map((item) => <tr key={item.n}><td><b>{item.n}</b></td><td className="r">{money(item.price)}</td><td className="r">{item.q}</td>
             <td><span className={"badge " + (item.q < item.min ? "low" : "live")}>{item.q < item.min ? `Reorder (min ${item.min})` : "OK"}</span></td>
-            <td className="r"><span className="qty"><button disabled={item.q === 0} onClick={() => { if (adjustCafeStock(item.n, -1)) say("Cafe stock updated"); }}>−</button><button onClick={() => { if (adjustCafeStock(item.n, 6)) say("Cafe stock updated"); }}>+6</button></span></td></tr>)}
-            {!db.cafeStock.length && <tr><td colSpan="5" className="empty">No cafe stock has been added.</td></tr>}</tbody></table>}
+            {!employee && <td className="r"><span className="qty"><button disabled={item.q === 0} onClick={() => { if (adjustCafeStock(item.n, -1)) say("Cafe stock updated"); }}>−</button><button onClick={() => { if (adjustCafeStock(item.n, 6)) say("Cafe stock updated"); }}>+6</button></span></td>}</tr>)}
+            {!db.cafeStock.length && <tr><td colSpan={employee ? "4" : "5"} className="empty">No cafe stock has been added.</td></tr>}</tbody></table>}
       </div>
 
       {adding && <Modal title={addTitle} onClose={closeAdd} foot={<><button className="btn" onClick={closeAdd}>Cancel</button><button className="btn primary" disabled={!canSave} onClick={save}>Save</button></>}>

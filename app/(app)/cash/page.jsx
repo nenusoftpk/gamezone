@@ -8,7 +8,7 @@ export default function Cash() {
   const [float, setFloat] = useState(2000), [count, setCount] = useState(""), [closed, setClosed] = useState(false);
   if (!db) return null;
   const mine = db.user.role === "employee";
-  const tops = db.ledger.filter((l) => (l.type === "topup" || l.type === "package" || l.type === "session_payment") && (!mine || l.by === db.user.name));
+  const tops = db.ledger.filter((l) => (l.type === "topup" || l.type === "package" || l.type === "session_payment" || l.type === "credit_payment" || l.type === "cafe_order") && (!mine || l.by === db.user.name));
   const paid = (l) => (l.type === "package" ? l.paid : l.amount);
   const by = tops.reduce((o, l) => ({ ...o, [l.method]: (o[l.method] || 0) + paid(l) }), {});
   const cash = by.Cash || 0, digital = Object.entries(by).filter(([k]) => k !== "Cash").reduce((a, [, v]) => a + v, 0);
@@ -38,7 +38,7 @@ export default function Cash() {
           {Object.entries(by).map(([k, v]) => <div className="line" key={k}><span>{k}</span><b>{money(v)}</b></div>)}
         </section>
         <section className="panel pad"><h3>Entries this shift</h3>
-          {tops.map((l) => <div className="line" key={l.id}><span>{timeStr(l.t)} · {db.customers.find((c) => c.id === l.customerId)?.name}<br /><small className="muted">{l.type === "session_payment" ? "Session checkout" : l.type === "package" ? "Package" : "Top-up"} · {l.method}{l.ref ? ` · ${l.ref}` : ""}{l.no ? ` · ${l.no}` : ""}</small></span><b className="pos">+{money(paid(l))}</b></div>)}
+          {tops.map((l) => <div className="line" key={l.id}><span>{timeStr(l.t)} · {db.customers.find((c) => c.id === l.customerId)?.name || (l.type === "cafe_order" ? "Walk-in" : "Customer")}<br /><small className="muted">{l.type === "session_payment" ? "Session checkout" : l.type === "credit_payment" ? "Customer loan repayment" : l.type === "cafe_order" ? "Cafe order" : l.type === "package" ? "Package" : "Top-up"} · {l.method}{l.ref ? ` · ${l.ref}` : ""}{l.no ? ` · ${l.no}` : ""}</small></span><b className="pos">+{money(paid(l))}</b></div>)}
           {!tops.length && <p className="muted">No collections yet in this shift.</p>}
         </section>
       </div>

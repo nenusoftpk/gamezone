@@ -7,12 +7,35 @@ export const RATES = { Standard: 300, Peak: 360, "VIP room": 450 }; // Rs per ho
 export const GAMES = ["EA FC 26", "Tekken 8", "Spider-Man 2", "God of War Ragnarök", "UFC 5", "Gran Turismo 7", "It Takes Two", "Call of Duty"];
 export const MIN = 60000, DAY = 86400000;
 export const money = (n) => "Rs " + Math.round(n).toLocaleString("en-PK");
+export const stationRates = (station) => {
+  const perHour = station.ratePerHour ?? RATES[station.plan] ?? 0;
+  return {
+    perMinute: station.ratePerMinute ?? perHour / 60,
+    per30Minutes: station.ratePer30Minutes ?? perHour / 2,
+    perHour,
+  };
+};
+const STAFF_ROLES = ["admin", "employee"];
 export const clock = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map((v) => String(v).padStart(2, "0")).join(":");
 };
 export const elapsed = (a, now) => (a.pausedAt || now) - a.t0 - a.pausedMs;
-export const cost = (a, now) => (elapsed(a, now) / 3600000) * a.rate;
+export const cost = (a, now) => {
+  const duration = elapsed(a, now);
+  if (duration <= 0) return 0;
+  const perMinute = a.ratePerMinute ?? a.rate / 60;
+  const per30Minutes = a.ratePer30Minutes ?? a.rate / 2;
+  const perHour = a.ratePerHour ?? a.rate;
+  if (a.rateUnit === "half_hour") return Math.ceil(duration / (35 * MIN)) * per30Minutes;
+  if (a.rateUnit === "hour") {
+    const firstHourWithGrace = 70 * MIN;
+    return duration <= firstHourWithGrace
+      ? perHour
+      : perHour + Math.ceil((duration - firstHourWithGrace) / (35 * MIN)) * per30Minutes;
+  }
+  return (duration / MIN) * perMinute;
+};
 export const timeStr = (t) => new Date(t).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
 export const dateStr = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 export const HOME = { employee: "/board", admin: "/dashboard", superadmin: "/platform" };
@@ -51,6 +74,7 @@ const seed = () => {
     equipment: EQUIP0.map((item) => ({ ...item })),
     gamesLibrary: GAMES_LIB.map((game) => ({ ...game })),
     cafeStock: STOCK0.map((item) => ({ ...item })),
+    cafeOrders: [],
     refunds: REF0.map((r) => ({ id: r.id, customerId: ids[r.who] ?? null, amt: r.amt, why: r.why, by: r.by, st: r.st, t: r.t })),
     shifts: [{ id: 1, by: "Zain Abbas", t: t - 14 * 3600000, expected: 5400, counted: 5400 }, { id: 2, by: "Hina Qureshi", t: t - 26 * 3600000, expected: 4200, counted: 4150 }],
     audit: AUDIT.map(([a, u, d, at]) => [a, u, d, at]),
@@ -104,14 +128,26 @@ const hydrate = (stored) => {
   if (!d.equipment) d.equipment = EQUIP0.map((item) => ({ ...item }));
   if (!d.gamesLibrary) d.gamesLibrary = GAMES_LIB.map((game) => ({ ...game }));
   if (!d.cafeStock) d.cafeStock = STOCK0.map((item) => ({ ...item }));
+  if (!d.cafeOrders) d.cafeOrders = [];
   d.sessions.forEach((session) => {
     if (session.paid === undefined) session.paid = session.amount;
     if (session.due === undefined) session.due = 0;
     if (!session.payments) session.payments = [];
     if (!session.billingMode) session.billingMode = "wallet";
+    if (!session.rateUnit) session.rateUnit = "minute";
   });
   d.stations.forEach((station) => {
-    if (station.active && !station.active.billingMode) station.active.billingMode = "wallet";
+    const rates = stationRates(station);
+    if (station.ratePerMinute === undefined) station.ratePerMinute = rates.perMinute;
+    if (station.ratePer30Minutes === undefined) station.ratePer30Minutes = rates.per30Minutes;
+    if (station.ratePerHour === undefined) station.ratePerHour = rates.perHour;
+    if (station.active) {
+      if (!station.active.billingMode) station.active.billingMode = "wallet";
+      if (station.active.ratePerMinute === undefined) station.active.ratePerMinute = rates.perMinute;
+      if (station.active.ratePer30Minutes === undefined) station.active.ratePer30Minutes = rates.per30Minutes;
+      if (station.active.ratePerHour === undefined) station.active.ratePerHour = station.active.rate ?? rates.perHour;
+      if (!station.active.rateUnit) station.active.rateUnit = "minute";
+    }
   });
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
   if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
@@ -194,7 +230,7 @@ export function StoreProvider({ children }) {
     }),
     addCustomer: (name, phone) => up((d) => { d.customers.push({ id: Date.now(), name, phone: phone || "—", balance: 0 }); log(d, "New customer", name); return d; }),
     addExpense: (category, description, amount) => {
-      if (db?.user?.role !== "admin" || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
+      if (!STAFF_ROLES.includes(db?.user?.role) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
       up((d) => {
         const expense = { id: Date.now(), category, description, amount, t: Date.now(), by: who(d) };
         d.expenses.unshift(expense);
@@ -204,7 +240,7 @@ export function StoreProvider({ children }) {
       return true;
     },
     addCustomerCredit: (customerId, description, amount) => {
-      if (db?.user?.role !== "admin" || !db.customers.some((c) => c.id === customerId) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
+      if (!STAFF_ROLES.includes(db?.user?.role) || !db.customers.some((c) => c.id === customerId) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
       up((d) => {
         const credit = { id: Date.now(), customerId, description, amount, paid: 0, t: Date.now(), by: who(d), payments: [] };
         d.customerCredits.unshift(credit);
@@ -213,14 +249,27 @@ export function StoreProvider({ children }) {
       });
       return true;
     },
-    repayCustomerCredit: (id, amount, method) => {
+    repayCustomerCredit: (id, amount, method, ref = "") => {
       const credit = db?.customerCredits.find((x) => x.id === id);
-      if (db?.user?.role !== "admin" || !credit || !Number.isFinite(amount) || amount <= 0 || amount > credit.amount - credit.paid) return false;
+      const reference = typeof ref === "string" ? ref.trim() : "";
+      if (!STAFF_ROLES.includes(db?.user?.role) || !credit || !Number.isFinite(amount) || amount <= 0 || amount > credit.amount - credit.paid
+        || !["Cash", "Easypaisa", "JazzCash", "Bank transfer"].includes(method)
+        || (method !== "Cash" && !reference)) return false;
       up((d) => {
         const entry = d.customerCredits.find((x) => x.id === id);
+        const now = Date.now(), customer = cust(d, entry.customerId);
         entry.paid += amount;
-        entry.payments.push({ amount, method, t: Date.now(), by: who(d) });
-        log(d, "Customer credit repayment", `${cust(d, entry.customerId).name} · Rs ${amount} (${method})`);
+        entry.payments.push({ amount, method, ref: reference, t: now, by: who(d) });
+        d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId: entry.customerId, type: "credit_payment", amount, method, ref: reference, creditId: id, by: who(d) });
+        if (entry.sourceSessionId) {
+          const session = d.sessions.find((item) => item.id === entry.sourceSessionId);
+          if (session) {
+            session.paid += amount;
+            session.due = Math.max(0, session.due - amount);
+            session.payments.push({ amount, method, ref: reference, t: now, by: who(d) });
+          }
+        }
+        log(d, "Customer credit repayment", `${customer.name} · Rs ${amount} (${method})`);
         return d;
       });
       return true;
@@ -274,12 +323,45 @@ export function StoreProvider({ children }) {
       });
       return true;
     },
-    start: (stationId, customerId, game, players, billingMode = "wallet") => up((d) => {
+    placeCafeOrder: (items, customerId, method, ref) => {
+      if (!STAFF_ROLES.includes(db?.user?.role) || !Array.isArray(items) || !items.length
+        || (customerId !== null && !db.customers.some((customer) => customer.id === customerId))
+        || !["Cash", "Easypaisa", "JazzCash", "Bank transfer"].includes(method)
+        || (method !== "Cash" && !ref?.trim())) return false;
+      const names = new Set();
+      const orderItems = items.map((item) => {
+        if (!item || typeof item.name !== "string") return null;
+        const { name, quantity } = item;
+        const stock = db.cafeStock.find((item) => item.n === name);
+        if (!stock || !Number.isInteger(quantity) || quantity <= 0 || quantity > stock.q || names.has(name)) return null;
+        names.add(name);
+        return { name: stock.n, quantity, price: stock.price };
+      });
+      if (orderItems.some((item) => !item)) return false;
+      const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      up((d) => {
+        if (orderItems.some((item) => {
+          const stock = d.cafeStock.find((entry) => entry.n === item.name);
+          return !stock || stock.q < item.quantity;
+        })) return d;
+        const now = Date.now(), id = "C" + now, reference = ref?.trim() || "";
+        orderItems.forEach((item) => {
+          d.cafeStock.find((stock) => stock.n === item.name).q -= item.quantity;
+        });
+        d.cafeOrders.unshift({ id, customerId, items: orderItems, total, method, ref: reference, by: who(d), t: now });
+        d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId, type: "cafe_order", amount: total, method, ref: reference, orderId: id, by: who(d) });
+        log(d, "Cafe order", `${customerId === null ? "Walk-in" : cust(d, customerId).name} · Rs ${total} (${method})`);
+        return d;
+      });
+      return true;
+    },
+    start: (stationId, customerId, game, players, billingMode = "wallet", rateUnit = "minute") => up((d) => {
       const s = d.stations.find((x) => x.id === stationId);
       if (!s) return d;
-      const customer = cust(d, customerId), rate = RATES[s.plan];
-      if (s.active || s.status !== "ok" || !customer || !["wallet", "checkout"].includes(billingMode) || (billingMode === "wallet" && customer.balance < rate / 6)) return d;
-      s.active = { customerId, game, players, billingMode, by: who(d), rate, t0: Date.now(), pausedMs: 0, pausedAt: 0 };
+      const customer = cust(d, customerId), rates = stationRates(s);
+      if (s.active || s.status !== "ok" || !customer || !["wallet", "checkout"].includes(billingMode)
+        || !["minute", "half_hour", "hour"].includes(rateUnit)) return d;
+      s.active = { customerId, game, players, billingMode, rateUnit, by: who(d), rate: rates.perHour, ratePerMinute: rates.perMinute, ratePer30Minutes: rates.per30Minutes, ratePerHour: rates.perHour, t0: Date.now(), pausedMs: 0, pausedAt: 0 };
       log(d, "Session start", `${s.name} · ${game} · ${cust(d, customerId).name}`); return d;
     }),
     pause: (stationId) => up((d) => {
@@ -297,20 +379,21 @@ export function StoreProvider({ children }) {
       const amount = Math.round(cost(a, now)), c = cust(d, a.customerId);
       const walletPaid = Math.min(c.balance, amount), due = amount - walletPaid;
       c.balance -= walletPaid;
-      d.sessions.unshift({ id: "S" + now, customerId: a.customerId, game: a.game, station: s.name, minutes: Math.round(elapsed(a, now) / MIN), amount, paid: walletPaid, due, payments: [], billingMode: a.billingMode || "wallet", by: a.by || who(d), t: now });
+      d.sessions.unshift({ id: "S" + now, customerId: a.customerId, game: a.game, players: a.players, rateUnit: a.rateUnit || "minute", station: s.name, minutes: Math.round(elapsed(a, now) / MIN), amount, paid: walletPaid, due, payments: [], billingMode: a.billingMode || "wallet", by: a.by || who(d), t: now });
       if (walletPaid > 0) d.ledger.unshift({ id: "L" + now, no: "", t: now, customerId: a.customerId, type: "debit", amount: -walletPaid, method: s.name, ref: "", by: who(d) });
       log(d, "Session end", `${s.name} · ${c.name} · Rs ${amount}${due ? ` · Rs ${due} due at checkout` : ""}`); s.active = null; return d;
     }),
-    checkoutSession: (id, method, ref) => {
+    checkoutSession: (id, method, ref, deferToCredit = false) => {
       const session = db?.sessions.find((entry) => entry.id === id);
       const customer = session && db.customers.find((entry) => entry.id === session.customerId);
       const walletApplied = customer ? Math.min(customer.balance, session.due) : 0;
       const toCollect = session ? session.due - walletApplied : 0;
-      if (!["admin", "employee"].includes(db?.user?.role) || !session || session.due <= 0 || !customer
-        || (toCollect > 0 && (!["Cash", "Easypaisa", "JazzCash", "Bank transfer"].includes(method) || (method !== "Cash" && !ref?.trim())))) return false;
+      if (!STAFF_ROLES.includes(db?.user?.role) || !session || session.creditId || session.due <= 0 || !customer
+        || (deferToCredit && toCollect <= 0)
+        || (!deferToCredit && toCollect > 0 && (!["Cash", "Easypaisa", "JazzCash", "Bank transfer"].includes(method) || (method !== "Cash" && !ref?.trim())))) return false;
       up((d) => {
         const bill = d.sessions.find((entry) => entry.id === id);
-        if (!bill || bill.due <= 0) return d;
+        if (!bill || bill.creditId || bill.due <= 0) return d;
         const c = cust(d, bill.customerId), now = Date.now(), wallet = Math.min(c.balance, bill.due);
         c.balance -= wallet;
         bill.paid += wallet;
@@ -321,12 +404,18 @@ export function StoreProvider({ children }) {
         }
         const collected = bill.due, reference = ref?.trim() || "";
         if (collected > 0) {
-          bill.paid += collected;
-          bill.due = 0;
-          bill.payments.push({ amount: collected, method, ref: reference, t: now, by: who(d) });
-          d.ledger.unshift({ id: "L" + now + "-checkout", no: "", t: now, customerId: bill.customerId, type: "session_payment", amount: collected, method, ref: reference, sessionId: id, by: who(d) });
+          if (deferToCredit) {
+            const creditId = "loan-" + bill.id;
+            d.customerCredits.unshift({ id: creditId, customerId: bill.customerId, description: `${bill.station} · ${bill.game}`, amount: collected, paid: 0, t: now, by: who(d), payments: [], sourceSessionId: id });
+            bill.creditId = creditId;
+          } else {
+            bill.paid += collected;
+            bill.due = 0;
+            bill.payments.push({ amount: collected, method, ref: reference, t: now, by: who(d) });
+            d.ledger.unshift({ id: "L" + now + "-checkout", no: "", t: now, customerId: bill.customerId, type: "session_payment", amount: collected, method, ref: reference, sessionId: id, by: who(d) });
+          }
         }
-        log(d, "Session bill paid", `${c.name} · Rs ${wallet} from wallet${collected ? ` and Rs ${collected} (${method})` : ""}`);
+        log(d, deferToCredit ? "Session added to customer credit" : "Session bill paid", `${c.name} · Rs ${wallet} from wallet${collected ? deferToCredit ? ` · Rs ${collected} added to customer credit` : ` and Rs ${collected} (${method})` : ""}`);
         return d;
       });
       return true;
@@ -348,7 +437,29 @@ export function StoreProvider({ children }) {
       d.shifts.unshift({ id: Date.now(), by: who(d), t: Date.now(), expected, counted });
       log(d, "Shift closed", `Expected Rs ${expected}, counted Rs ${counted}`); return d;
     }),
-    setStation: (id, patch) => up((d) => { Object.assign(d.stations.find((x) => x.id === id), patch); return d; }),
+    addStation: (name, room, model, rates) => {
+      if (db?.user?.role !== "admin" || !name?.trim() || !room?.trim() || !model?.trim() || !rates
+        || db.stations.some((station) => station.name.toLowerCase() === name.trim().toLowerCase())
+        || ![rates.perMinute, rates.per30Minutes, rates.perHour].every((rate) => Number.isFinite(rate) && rate > 0)) return false;
+      up((d) => {
+        d.stations.push({ id: Date.now(), name: name.trim(), room: room.trim(), model: model.trim(), plan: "Standard", status: "ok", active: null, ratePerMinute: rates.perMinute, ratePer30Minutes: rates.per30Minutes, ratePerHour: rates.perHour });
+        log(d, "Station added", `${name.trim()} · ${room.trim()}`);
+        return d;
+      });
+      return true;
+    },
+    setStation: (id, patch) => {
+      const station = db?.stations.find((item) => item.id === id);
+      if (db?.user?.role !== "admin" || !station
+        || (patch.status !== undefined && !["ok", "maintenance"].includes(patch.status))
+        || [patch.ratePerMinute, patch.ratePer30Minutes, patch.ratePerHour].some((rate) => rate !== undefined && (!Number.isFinite(rate) || rate <= 0))) return false;
+      up((d) => {
+        Object.assign(d.stations.find((item) => item.id === id), patch);
+        log(d, "Station updated", `${station.name} · rates or status`);
+        return d;
+      });
+      return true;
+    },
     // platform (superadmin)
     createTenant: (f) => up((d) => {
       const id = Date.now();

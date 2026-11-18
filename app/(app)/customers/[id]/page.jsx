@@ -14,7 +14,7 @@ export default function Customer() {
   if (!c) return <><Link className="back" href="/customers">← Customers</Link><div className="panel pad">This customer was not found. Go back to the list and pick another.</div></>;
   const led = db.ledger.filter((l) => l.customerId === c.id), ses = db.sessions.filter((s) => s.customerId === c.id);
   const topped = led.filter((l) => l.type === "topup" || l.type === "package").reduce((a, l) => a + l.amount, 0), spent = ses.reduce((a, s) => a + s.amount, 0);
-  const kind = { topup: ["Top-up", "live"], package: ["Package", "live"], refund: ["Refund", "low"], debit: ["Session", "paused"], session_payment: ["Session checkout", "live"] };
+  const kind = { topup: ["Top-up", "live"], package: ["Package", "live"], refund: ["Refund", "low"], debit: ["Session", "paused"], session_payment: ["Session checkout", "live"], credit_payment: ["Loan repayment", "live"], cafe_order: ["Cafe order", "live"] };
   return (
     <>
       <Link className="back" href="/customers">← Customers</Link>

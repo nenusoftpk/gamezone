@@ -12,7 +12,7 @@ export default function Finance() {
   const [expenseOpen, setExpenseOpen] = useState(false), [creditOpen, setCreditOpen] = useState(false), [repayId, setRepayId] = useState(null);
   const [category, setCategory] = useState(CATEGORIES[0]), [description, setDescription] = useState(""), [amount, setAmount] = useState("");
   const [customerId, setCustomerId] = useState(""), [creditDescription, setCreditDescription] = useState(""), [creditAmount, setCreditAmount] = useState("");
-  const [repayAmount, setRepayAmount] = useState(""), [method, setMethod] = useState(METHODS[0]);
+  const [repayAmount, setRepayAmount] = useState(""), [method, setMethod] = useState(METHODS[0]), [repayRef, setRepayRef] = useState("");
   if (!db) return null;
 
   const sessionRevenue = db.sessions.reduce((sum, session) => sum + session.amount, 0);
@@ -25,8 +25,8 @@ export default function Finance() {
 
   return (
     <>
-      <PageHead title="Loans & expenses" sub="Track customer credit and operating costs alongside earned revenue">
-        <button className="btn" onClick={() => setCreditOpen(true)}>Record customer credit</button>
+      <PageHead title="Loans & expenses" sub="Track customer loans, repayments and operating costs alongside earned revenue">
+        <button className="btn" onClick={() => setCreditOpen(true)}>Record customer loan</button>
         <button className="btn primary" onClick={() => setExpenseOpen(true)}>Add expense</button>
       </PageHead>
       <div className="kpis">
@@ -36,7 +36,7 @@ export default function Finance() {
         <div className="kpi"><span>Customer credit due</span><b>{money(creditDue)}</b><small>Outstanding unpaid charges</small></div>
       </div>
       <div className="tabs">
-        {[["expenses", "Expenses"], ["credit", "Customer credit"]].map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} onClick={() => setTab(key)}>{label}</button>)}
+        {[["expenses", "Expenses"], ["credit", "Customer loans"]].map(([key, label]) => <button key={key} className={tab === key ? "on" : ""} onClick={() => setTab(key)}>{label}</button>)}
       </div>
       <div className="panel">
         {tab === "expenses" ? (
@@ -52,14 +52,14 @@ export default function Finance() {
               const due = credit.amount - credit.paid;
               return <tr key={credit.id}>
                 <td>{dateStr(credit.t)}</td><td><b>{customerName(credit.customerId)}</b></td><td>{credit.description}
-                  {credit.payments.length > 0 && <details><summary>Payments ({credit.payments.length})</summary>{credit.payments.map((payment, index) => <div className="line" key={index}><span>{dateStr(payment.t)} · {payment.method} · {payment.by}</span><b>{money(payment.amount)}</b></div>)}</details>}
+                  {credit.payments.length > 0 && <details><summary>Payments ({credit.payments.length})</summary>{credit.payments.map((payment, index) => <div className="line" key={index}><span>{dateStr(payment.t)} · {payment.method}{payment.ref ? ` · ${payment.ref}` : ""} · {payment.by}</span><b>{money(payment.amount)}</b></div>)}</details>}
                 </td>
                 <td className="r">{money(credit.amount)}</td><td className="r">{money(credit.paid)}</td><td className="r"><b>{money(due)}</b></td>
                 <td><span className={"badge " + (due === 0 ? "live" : "paused")}>{due === 0 ? "Paid" : "Outstanding"}</span></td>
-                <td className="r">{due > 0 && <button className="btn sm" onClick={() => { setRepayId(credit.id); setRepayAmount(String(due)); setMethod(METHODS[0]); }}>Record payment</button>}</td>
+                <td className="r">{due > 0 && <button className="btn sm" onClick={() => { setRepayId(credit.id); setRepayAmount(String(due)); setMethod(METHODS[0]); setRepayRef(""); }}>Record payment</button>}</td>
               </tr>;
             })}
-              {!db.customerCredits.length && <tr><td colSpan="8" className="empty">No customer credit recorded yet.</td></tr>}</tbody>
+              {!db.customerCredits.length && <tr><td colSpan="8" className="empty">No customer loans recorded yet.</td></tr>}</tbody>
           </table>
         )}
       </div>
@@ -72,21 +72,22 @@ export default function Finance() {
         <label>Amount (Rs)<input type="number" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
       </Modal>}
 
-      {creditOpen && <Modal title="Record customer credit" onClose={resetCredit} foot={<><button className="btn" onClick={resetCredit}>Cancel</button><button className="btn primary" disabled={!customerId || !creditDescription.trim() || !Number.isFinite(Number(creditAmount)) || Number(creditAmount) <= 0} onClick={() => {
-        if (addCustomerCredit(Number(customerId), creditDescription.trim(), Number(creditAmount))) { resetCredit(); say("Customer credit recorded"); } else say("Unable to record customer credit");
-      }}>Save credit</button></>}>
+      {creditOpen && <Modal title="Record customer loan" onClose={resetCredit} foot={<><button className="btn" onClick={resetCredit}>Cancel</button><button className="btn primary" disabled={!customerId || !creditDescription.trim() || !Number.isFinite(Number(creditAmount)) || Number(creditAmount) <= 0} onClick={() => {
+        if (addCustomerCredit(Number(customerId), creditDescription.trim(), Number(creditAmount))) { resetCredit(); say("Customer loan recorded"); } else say("Unable to record customer loan");
+      }}>Save loan</button></>}>
         <label>Customer<select value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select a customer</option>{db.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
-        <label>Unpaid charge<input value={creditDescription} onChange={(event) => setCreditDescription(event.target.value)} placeholder="e.g. Gaming session" /></label>
+        <label>Reason for loan<input value={creditDescription} onChange={(event) => setCreditDescription(event.target.value)} placeholder="e.g. Unpaid gaming session" /></label>
         <label>Amount owed (Rs)<input type="number" min="1" step="1" value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} /></label>
       </Modal>}
 
-      {activeCredit && <Modal title="Record customer payment" onClose={() => setRepayId(null)} foot={<><button className="btn" onClick={() => setRepayId(null)}>Cancel</button><button className="btn primary" disabled={!Number.isFinite(Number(repayAmount)) || Number(repayAmount) <= 0 || Number(repayAmount) > activeCredit.amount - activeCredit.paid} onClick={() => {
-        if (repayCustomerCredit(activeCredit.id, Number(repayAmount), method)) { setRepayId(null); say("Customer payment recorded"); } else say("Unable to record customer payment");
+      {activeCredit && <Modal title="Record customer payment" onClose={() => setRepayId(null)} foot={<><button className="btn" onClick={() => setRepayId(null)}>Cancel</button><button className="btn primary" disabled={!Number.isFinite(Number(repayAmount)) || Number(repayAmount) <= 0 || Number(repayAmount) > activeCredit.amount - activeCredit.paid || (method !== "Cash" && !repayRef.trim())} onClick={() => {
+        if (repayCustomerCredit(activeCredit.id, Number(repayAmount), method, repayRef)) { setRepayId(null); setRepayRef(""); say("Customer payment recorded"); } else say("Unable to record customer payment");
       }}>Save payment</button></>}>
         <p className="muted">{customerName(activeCredit.customerId)} · {activeCredit.description}</p>
         <div className="line"><span>Outstanding</span><b>{money(activeCredit.amount - activeCredit.paid)}</b></div>
         <label>Payment amount (Rs)<input type="number" min="1" max={activeCredit.amount - activeCredit.paid} step="1" value={repayAmount} onChange={(event) => setRepayAmount(event.target.value)} /></label>
         <label>Payment method<select value={method} onChange={(event) => setMethod(event.target.value)}>{METHODS.map((item) => <option key={item}>{item}</option>)}</select></label>
+        {method !== "Cash" && <label>Transaction reference<input value={repayRef} onChange={(event) => setRepayRef(event.target.value)} placeholder="Enter transaction reference" /></label>}
       </Modal>}
     </>
   );

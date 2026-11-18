@@ -6,11 +6,11 @@ import { useStore, HOME } from "@/lib/store";
 import { Icon, Avatar, BrandLogo } from "@/components/ui";
 
 const NAV = {
-  employee: [["Counter", [["/board", "Live board", "board"], ["/customers", "Customers", "users"], ["/sell-package", "Sell package", "box"], ["/cash", "Cash collection", "wallet"], ["/refund-requests", "Refund requests", "undo"], ["/history", "History", "clock"]]]],
+  employee: [["Counter", [["/board", "Live board", "board"], ["/customers", "Customers", "users"], ["/cash", "Cash collection", "wallet"], ["/finance", "Loans & expenses", "wallet"], ["/cafe-orders", "Cafe orders", "box"], ["/inventory", "Cafe inventory", "box"], ["/refund-requests", "Refund requests", "undo"], ["/history", "Game history", "clock"]]]],
   admin: [
     ["Overview", [["/dashboard", "Dashboard", "chart"], ["/board", "Live board", "board"], ["/customers", "Customers", "users"]]],
-    ["Money", [["/cash", "Cash collection", "wallet"], ["/reports", "Reports", "file"], ["/finance", "Loans & expenses", "wallet"], ["/refunds", "Refunds", "undo"], ["/history", "History", "clock"]]],
-    ["Setup", [["/stations", "Stations & rates", "grid"], ["/packages", "Packages", "box"], ["/inventory", "Inventory", "box"], ["/employees", "Employees", "users"], ["/audit", "Audit log", "shield"], ["/settings", "Settings", "gear"], ["/account", "Change password", "shield"]]],
+    ["Money", [["/cash", "Cash collection", "wallet"], ["/reports", "Reports", "file"], ["/finance", "Loans & expenses", "wallet"], ["/refunds", "Refunds", "undo"], ["/history", "Game history", "clock"]]],
+    ["Setup", [["/stations", "Stations & rates", "grid"], ["/packages", "Packages", "box"], ["/inventory", "Inventory", "box"], ["/cafe-orders", "Cafe orders", "box"], ["/employees", "Employees", "users"], ["/audit", "Audit log", "shield"], ["/settings", "Settings", "gear"], ["/account", "Change password", "shield"]]],
   ],
   superadmin: [["Platform", [["/platform", "Overview", "chart"], ["/tenants", "Branches", "building"], ["/plans", "Plans", "box"], ["/subscriptions", "Payments", "wallet"], ["/resources", "Downloads & demos", "file"], ["/platform-audit", "Platform audit", "shield"], ["/account", "Change password", "shield"]]]],
 };
