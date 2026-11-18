@@ -151,6 +151,15 @@ const hydrate = (stored) => {
   });
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
   if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
+  const employeeNames = new Set([
+    ...d.accounts.filter((account) => account.role === "employee").map((account) => account.name),
+    ...d.employees.map((employee) => employee.name),
+  ]);
+  d.expenses.forEach((expense) => {
+    if (!["admin", "employee"].includes(expense.recordedRole)) {
+      expense.recordedRole = employeeNames.has(expense.by) ? "employee" : "admin";
+    }
+  });
   if (d.user && !d.user.id) {
     const account = d.accounts.find((x) => x.role === d.user.role && (x.role !== "admin" || x.tenantId === d.tenants?.[0]?.id));
     if (account) d.user = { id: account.id, role: account.role, name: account.name, tenantId: account.tenantId };
@@ -232,19 +241,9 @@ export function StoreProvider({ children }) {
     addExpense: (category, description, amount) => {
       if (!STAFF_ROLES.includes(db?.user?.role) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
       up((d) => {
-        const expense = { id: Date.now(), category, description, amount, t: Date.now(), by: who(d) };
+        const expense = { id: Date.now(), category, description, amount, t: Date.now(), by: who(d), recordedRole: d.user.role };
         d.expenses.unshift(expense);
         log(d, "Expense recorded", `${category} · Rs ${amount} · ${description}`);
-        return d;
-      });
-      return true;
-    },
-    addCustomerCredit: (customerId, description, amount) => {
-      if (!STAFF_ROLES.includes(db?.user?.role) || !db.customers.some((c) => c.id === customerId) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
-      up((d) => {
-        const credit = { id: Date.now(), customerId, description, amount, paid: 0, t: Date.now(), by: who(d), payments: [] };
-        d.customerCredits.unshift(credit);
-        log(d, "Customer credit recorded", `${cust(d, customerId).name} · Rs ${amount} · ${description}`);
         return d;
       });
       return true;

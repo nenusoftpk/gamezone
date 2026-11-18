@@ -154,7 +154,7 @@ export default function Board() {
           setCheckoutReceipt({ no: `B-${checkoutBill.id}`, t: Date.now(), name: checkoutCustomer?.name || "Walk-in", what: deferred ? "Customer loan" : "Session checkout", detail: `${checkoutBill.station} · ${checkoutBill.game} · Wallet ${money(checkoutWalletApplied)} · ${deferred ? `Loan recorded ${money(checkoutToCollect)}` : `Collected ${money(checkoutToCollect)}`}`, method: deferred ? "Customer credit" : checkoutToCollect ? checkoutMethod : "Wallet", ref: checkoutToCollect && !deferred ? checkoutRef.trim() : "", balance: Math.max(0, (checkoutCustomer?.balance || 0) - checkoutWalletApplied), by: db.user.name });
           setCheckoutId(null); say(deferred ? "Customer loan recorded" : "Checkout payment recorded");
         } else say("Unable to complete checkout");
-      }}>{checkoutToCollect ? checkoutMethod === "Customer credit" ? `Record ${money(checkoutToCollect)} as loan` : `Collect ${money(checkoutToCollect)}` : "Complete checkout"}</button></>}>
+      }}>{checkoutToCollect ? checkoutMethod === "Customer credit" ? `Convert ${money(checkoutToCollect)} to loan` : `Collect ${money(checkoutToCollect)}` : "Complete checkout"}</button></>}>
         <div className="receipt">
           <div><span>Customer</span><b>{db.customers.find((customer) => customer.id === checkoutBill.customerId)?.name || "Walk-in"}</b></div>
           <div><span>Station · game</span><b>{checkoutBill.station} · {checkoutBill.game}</b></div>
@@ -164,8 +164,9 @@ export default function Board() {
           <div className="total"><span>{checkoutToCollect ? "Collect now" : "Wallet covers remaining bill"}</span><b>{money(checkoutToCollect || checkoutWalletApplied)}</b></div>
         </div>
         {checkoutToCollect > 0 && <>
-          <label>Payment method<select value={checkoutMethod} onChange={(e) => setCheckoutMethod(e.target.value)}>{["Cash", "Easypaisa", "JazzCash", "Bank transfer", "Customer credit"].map((method) => <option key={method}>{method}</option>)}</select></label>
+          <label>Payment method<select value={checkoutMethod} onChange={(e) => setCheckoutMethod(e.target.value)}>{["Cash", "Easypaisa", "JazzCash", "Bank transfer"].map((method) => <option key={method}>{method}</option>)}<option value="Customer credit">Convert to customer loan</option></select></label>
           {checkoutMethod !== "Cash" && checkoutMethod !== "Customer credit" && <label>Transaction reference<input value={checkoutRef} onChange={(e) => setCheckoutRef(e.target.value)} placeholder="Enter transaction reference" /></label>}
+          {checkoutMethod === "Customer credit" && <div className="callout warn">The remaining amount will be added to this customer’s loan balance.</div>}
         </>}
       </Modal>}
       {checkoutReceipt && <Receipt r={checkoutReceipt} onClose={() => setCheckoutReceipt(null)} />}

@@ -13,7 +13,8 @@ npm run build && npm start
 ## Structure
 - `app/login` role picker (demo login)
 - `app/(app)/board | customers | history | dashboard | stations | tenants` role pages inside the sidebar shell; employees and admins choose per-minute, 30-minute, or hourly billing, wallet funds are automatically applied at session end, and any remainder is payable at checkout; admins manage station rates
-- Employees and admins can record expenses, customer loans, loan repayments, and paid cafe orders; employee cafe stock is read-only
+- Separate `loans`, `expenses`, and `revenue` pages keep customer credit, operating costs, and earned game/cafe sales distinct; admin and employee expenses are stored in separate ledgers
+- Employees and admins can record expenses, convert unpaid session checkouts to customer loans, repay loans, and place paid cafe orders; employee cafe stock is read-only
 - Admin inventory manages equipment, games and cafe stock
 - `lib/store.jsx` demo data store (localStorage) and billing logic: 30-minute rates include 5 minutes grace, hourly rates include 10 minutes grace, and subsequent blocks are charged in 30-minute increments; each session keeps its starting rates
 - `components/` Shell, Modal/Icons, TopUp
