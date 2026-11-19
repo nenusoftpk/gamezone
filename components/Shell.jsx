@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useStore, HOME } from "@/lib/store";
-import { Icon, Avatar, BrandLogo } from "@/components/ui";
+import { Icon, Avatar, BrandLogo, TableEnhancer } from "@/components/ui";
 
 const NAV = {
   employee: [
@@ -61,7 +61,7 @@ export default function Shell({ children }) {
           <button className="nav" onClick={() => { setDrawerOpen(false); logout(); router.replace("/login"); }}><Icon n="out" />Sign out</button>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">{children}<TableEnhancer /></main>
     </div>
   );
 }

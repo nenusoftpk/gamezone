@@ -63,3 +63,156 @@ export const PageHead = ({ title, sub, children }) => (
   <header className="page-head"><div><h1>{title}</h1><p>{sub}</p></div><div className="head-actions">{children}</div></header>
 );
 export const Avatar = ({ name }) => { const h = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360; return <span className="avatar" style={{ background: `linear-gradient(135deg,hsl(${h} 75% 52%),hsl(${(h + 50) % 360} 80% 60%))`, color: "#fff" }}>{name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>; };
+
+export function TableEnhancer() {
+  useEffect(() => {
+    const enhance = () => {
+      document.querySelectorAll(".panel table").forEach((table) => {
+        const panel = table.closest(".panel");
+        if (!panel) return;
+        if (typeof table._refreshTableEnhancer === "function") {
+          table._refreshTableEnhancer();
+          return;
+        }
+
+        const toolbar = document.createElement("div");
+        toolbar.className = "table-tools";
+
+        const searchWrap = document.createElement("div");
+        searchWrap.className = "table-search";
+        const searchIcon = document.createElement("span");
+        searchIcon.className = "table-search-icon";
+        searchIcon.setAttribute("aria-hidden", "true");
+        searchIcon.textContent = "\u2315";
+        const search = document.createElement("input");
+        search.type = "search";
+        search.placeholder = "Search table...";
+        search.setAttribute("aria-label", "Search table");
+        searchWrap.append(searchIcon, search);
+
+        const filter = document.createElement("select");
+        filter.className = "table-filter";
+        filter.setAttribute("aria-label", "Filter table");
+        const all = document.createElement("option");
+        all.value = "";
+        all.textContent = "All statuses";
+        filter.append(all);
+
+        const count = document.createElement("span");
+        count.className = "table-count";
+
+        const pagination = document.createElement("div");
+        pagination.className = "table-pagination";
+        const pageSize = document.createElement("select");
+        pageSize.className = "table-page-size";
+        pageSize.setAttribute("aria-label", "Rows per page");
+        [10, 25, 50].forEach((size) => {
+          const option = document.createElement("option");
+          option.value = String(size);
+          option.textContent = `${size} per page`;
+          pageSize.append(option);
+        });
+        const previous = document.createElement("button");
+        previous.type = "button";
+        previous.className = "table-page-button";
+        previous.textContent = "Previous";
+        const pageLabel = document.createElement("span");
+        pageLabel.className = "table-page-label";
+        const next = document.createElement("button");
+        next.type = "button";
+        next.className = "table-page-button";
+        next.textContent = "Next";
+
+        toolbar.append(searchWrap, filter, count);
+        pagination.append(pageSize, previous, pageLabel, next);
+        table.parentElement.insertBefore(pagination, table.nextSibling);
+        table.parentElement.insertBefore(toolbar, table);
+
+        let rows = [];
+        let currentPage = 1;
+        let rowsPerPage = Number(pageSize.value);
+        const apply = () => {
+          rows = Array.from(table.querySelectorAll("tbody tr"));
+          const query = search.value.trim().toLowerCase();
+          const selected = filter.value;
+          const dataRows = rows.filter((row) => !row.querySelector(".empty"));
+          const matchedRows = dataRows.filter((row) => {
+            const matchesSearch = !query || row.textContent.toLowerCase().includes(query);
+            const badge = row.querySelector(".badge");
+            const matchesFilter = !selected || badge?.textContent.trim() === selected;
+            return matchesSearch && matchesFilter;
+          });
+
+          const totalPages = Math.max(1, Math.ceil(matchedRows.length / rowsPerPage));
+          currentPage = Math.min(currentPage, totalPages);
+          const start = (currentPage - 1) * rowsPerPage;
+          const end = Math.min(start + rowsPerPage, matchedRows.length);
+          const visibleRows = new Set(matchedRows.slice(start, end));
+
+          rows.forEach((row) => {
+            row.hidden = dataRows.length > 0
+              ? !visibleRows.has(row)
+              : false;
+          });
+
+          const resultText = matchedRows.length
+            ? `Showing ${start + 1}–${end} of ${matchedRows.length} results`
+            : "Showing 0 results";
+          if (count.textContent !== resultText) count.textContent = resultText;
+          const labelText = `Page ${currentPage} of ${totalPages}`;
+          if (pageLabel.textContent !== labelText) pageLabel.textContent = labelText;
+          previous.disabled = currentPage <= 1;
+          next.disabled = currentPage >= totalPages;
+        };
+
+        const refreshFilters = () => {
+          rows = Array.from(table.querySelectorAll("tbody tr"));
+          const values = new Set();
+          const signatureParts = [];
+          rows.forEach((row) => {
+            row.querySelectorAll(".badge").forEach((badge) => {
+              const value = badge.textContent.trim();
+              if (value) values.add(value);
+            });
+            signatureParts.push(row.textContent.trim());
+          });
+          const signature = JSON.stringify([signatureParts, Array.from(values)]);
+          if (table._enhancerSignature === signature) {
+            apply();
+            return;
+          }
+          table._enhancerSignature = signature;
+
+          const current = filter.value;
+          filter.replaceChildren(all);
+          values.forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value;
+            filter.append(option);
+          });
+          if (values.has(current)) filter.value = current;
+          apply();
+        };
+
+        search.addEventListener("input", () => { currentPage = 1; apply(); });
+        filter.addEventListener("change", () => { currentPage = 1; apply(); });
+        pageSize.addEventListener("change", () => {
+          rowsPerPage = Number(pageSize.value);
+          currentPage = 1;
+          apply();
+        });
+        previous.addEventListener("click", () => { currentPage--; apply(); });
+        next.addEventListener("click", () => { currentPage++; apply(); });
+        refreshFilters();
+        table._refreshTableEnhancer = refreshFilters;
+      });
+    };
+
+    enhance();
+    const observer = new MutationObserver(enhance);
+    observer.observe(document.querySelector("main") || document.body, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
+  return null;
+}
