@@ -30,7 +30,7 @@ Superadmin sign-in is verified against a MongoDB account. Branch records, plans,
 
 The MongoDB auth session is stored in an HTTP-only cookie and protects superadmin platform routes. Superadmin and branch-admin password changes are saved in MongoDB. This migration does not move customers, stations, sessions, employees, or other branch operational data out of localStorage.
 
-The Employee demo button uses `DEMO_EMPLOYEE_USERNAME` and `DEMO_EMPLOYEE_PASSWORD` from the server environment. These are returned to the public login page to support the demo button, so configure demo-only credentials and do not use real staff credentials.
+The Employee and Admin demo buttons use `DEMO_EMPLOYEE_USERNAME`, `DEMO_EMPLOYEE_PASSWORD`, `DEMO_ADMIN_USERNAME`, and `DEMO_ADMIN_PASSWORD` from the server environment. These credentials are returned to the public login page to support the demo buttons, so configure demo-only credentials and do not use real staff credentials.
 
 ## Connecting a real backend
 Replace the actions in `lib/store.jsx` with calls to your Express/MySQL API

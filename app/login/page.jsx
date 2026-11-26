@@ -9,18 +9,21 @@ import { BrandLogo, Icon, Modal } from "@/components/ui";
 export default function Login() {
   const { db, authenticate, login, resourcesError } = useStore(), router = useRouter();
   const [fp, setFp] = useState(false), [u, setU] = useState(""), [p, setP] = useState(""), [show, setShow] = useState(false), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
-  const [demoEmployee, setDemoEmployee] = useState(null), [demoError, setDemoError] = useState("");
+  const [demoCredentials, setDemoCredentials] = useState(null), [demoError, setDemoError] = useState("");
   useEffect(() => {
     let active = true;
     fetch("/api/public/demo-credentials", { cache: "no-store" })
       .then(async (response) => {
         let result;
         try { result = await response.json(); } catch { throw new Error("The demo credential service returned an invalid response."); }
-        if (!response.ok) throw new Error(result.error || "Employee demo credentials are unavailable.");
-        if (typeof result.username !== "string" || typeof result.password !== "string") throw new Error("Employee demo credentials are unavailable.");
-        if (active) setDemoEmployee(result);
+        if (!response.ok) throw new Error(result.error || "Demo credentials are unavailable.");
+        const validDemo = (demo) => demo && typeof demo.username === "string" && typeof demo.password === "string";
+        result.employee = validDemo(result.employee) ? result.employee : null;
+        result.admin = validDemo(result.admin) ? result.admin : null;
+        if (!result.employee && !result.admin) throw new Error("Demo credentials are unavailable.");
+        if (active) setDemoCredentials(result);
       })
-      .catch((error) => { if (active) setDemoError(error.message || "Employee demo credentials are unavailable."); });
+      .catch((error) => { if (active) setDemoError(error.message || "Demo credentials are unavailable."); });
     return () => { active = false; };
   }, []);
   const submit = async (e) => {
@@ -39,9 +42,9 @@ export default function Login() {
         if (!response.ok) return setErr(result.error || "Superadmin sign in failed.");
         acc = result.account;
       } else {
-        const isDemoEmployee = demoEmployee
-          && u.trim().toLowerCase() === demoEmployee.username.toLowerCase()
-          && p === demoEmployee.password;
+        const isDemoEmployee = demoCredentials?.employee
+          && u.trim().toLowerCase() === demoCredentials.employee.username.toLowerCase()
+          && p === demoCredentials.employee.password;
         if (isDemoEmployee) {
           acc = db?.accounts.find((account) => account.role === "employee" && account.active
             && db.employees.some((employee) => employee.id === account.employeeId && employee.on));
@@ -71,11 +74,6 @@ export default function Login() {
       setBusy(false);
     }
   };
-  const quick = db?.accounts.filter((x) => x.role === "admin" && x.username === "admin").map((x) => [
-    "Admin",
-    x.username,
-    x.password,
-  ]) || [];
   return (
     <div className="login">
       <section className="hero"><div className="hero-art"><Image src="/images/login-gaming.png" alt="A wireless gaming controller lit in blue and purple" fill priority sizes="(max-width: 960px) 100vw, 55vw" className="hero-photo" /></div>
@@ -118,8 +116,8 @@ export default function Login() {
           <div className="demo">
             <span>Demo accounts. Tap one to fill the form:</span>
             <div className="chips">
-              {demoEmployee && <button type="button" className="chip" onClick={() => { setU(demoEmployee.username); setP(demoEmployee.password); setErr(""); }}>Employee</button>}
-              {quick.map(([l, k, password]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(password); setErr(""); }}>{l}</button>)}
+              {demoCredentials?.employee && <button type="button" className="chip" onClick={() => { setU(demoCredentials.employee.username); setP(demoCredentials.employee.password); setErr(""); }}>Employee</button>}
+              {demoCredentials?.admin && <button type="button" className="chip" onClick={() => { setU(demoCredentials.admin.username); setP(demoCredentials.admin.password); setErr(""); }}>Admin</button>}
             </div>
             {demoError && <small className="callout warn" role="alert">{demoError}</small>}
             <small className="muted">Demo only: passwords are stored in this browser, not on a secure authentication server.</small>
