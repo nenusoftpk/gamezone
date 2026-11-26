@@ -18,7 +18,7 @@ const NAV = {
   superadmin: [["Platform", [["/platform", "Overview", "chart"], ["/tenants", "Branches", "building"], ["/plans", "Plans", "box"], ["/subscriptions", "Payments", "wallet"], ["/resources", "Downloads & demos", "file"], ["/platform-audit", "Platform audit", "shield"], ["/account", "Change password", "shield"]]]],
 };
 export default function Shell({ children }) {
-  const { db, logout } = useStore();
+  const { db, logout, say } = useStore();
   const path = usePathname(), router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const role = db?.user?.role;
@@ -58,7 +58,15 @@ export default function Shell({ children }) {
         ))}</nav>
         <div className="side-foot">
           <div className="me"><Avatar name={u.name} /><div><b>{u.name}</b><small>{u.role}</small></div></div>
-          <button className="nav" onClick={() => { setDrawerOpen(false); logout(); router.replace("/login"); }}><Icon n="out" />Sign out</button>
+          <button className="nav" onClick={async () => {
+            setDrawerOpen(false);
+            try {
+              await logout();
+              router.replace("/login");
+            } catch {
+              say("Could not securely sign out. Please try again.");
+            }
+          }}><Icon n="out" />Sign out</button>
         </div>
       </aside>
       <main className="main">{children}<TableEnhancer /></main>

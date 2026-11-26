@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -7,17 +7,72 @@ import { HOME, useStore } from "@/lib/store";
 import { BrandLogo, Icon, Modal } from "@/components/ui";
 
 export default function Login() {
-  const { db, authenticate, login } = useStore(), router = useRouter();
+  const { db, authenticate, login, resourcesError } = useStore(), router = useRouter();
   const [fp, setFp] = useState(false), [u, setU] = useState(""), [p, setP] = useState(""), [show, setShow] = useState(false), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
-  const submit = (e) => {
+  const [demoEmployee, setDemoEmployee] = useState(null), [demoError, setDemoError] = useState("");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/public/demo-credentials", { cache: "no-store" })
+      .then(async (response) => {
+        let result;
+        try { result = await response.json(); } catch { throw new Error("The demo credential service returned an invalid response."); }
+        if (!response.ok) throw new Error(result.error || "Employee demo credentials are unavailable.");
+        if (typeof result.username !== "string" || typeof result.password !== "string") throw new Error("Employee demo credentials are unavailable.");
+        if (active) setDemoEmployee(result);
+      })
+      .catch((error) => { if (active) setDemoError(error.message || "Employee demo credentials are unavailable."); });
+    return () => { active = false; };
+  }, []);
+  const submit = async (e) => {
     e.preventDefault();
     if (!u.trim() || !p) return setErr("Enter your username and password.");
-    const acc = authenticate(u, p);
-    if (!acc) return setErr("Username or password is incorrect. Check both and try again.");
-    setErr(""); setBusy(true); login(acc); router.push(HOME[acc.role]);
+    setErr(""); setBusy(true);
+    try {
+      let acc;
+      if (u.trim().toLowerCase() === "superadmin") {
+        const response = await fetch("/api/auth/superadmin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: u, password: p }),
+        });
+        const result = await response.json();
+        if (!response.ok) return setErr(result.error || "Superadmin sign in failed.");
+        acc = result.account;
+      } else {
+        const isDemoEmployee = demoEmployee
+          && u.trim().toLowerCase() === demoEmployee.username.toLowerCase()
+          && p === demoEmployee.password;
+        if (isDemoEmployee) {
+          acc = db?.accounts.find((account) => account.role === "employee" && account.active
+            && db.employees.some((employee) => employee.id === account.employeeId && employee.on));
+          if (!acc) return setErr("No active employee account is available for demo sign-in.");
+        } else {
+          const localAccount = authenticate(u, p);
+          if (localAccount?.role === "employee") {
+            acc = localAccount;
+          } else {
+            const response = await fetch("/api/auth/admin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: u, password: p }),
+            });
+            const result = await response.json();
+            if (response.status === 404 && localAccount?.role === "admin") acc = localAccount;
+            else if (!response.ok) return setErr(result.error || "Username or password is incorrect. Check both and try again.");
+            else acc = result.account;
+          }
+        }
+      }
+      await login(acc);
+      router.push(HOME[acc.role]);
+    } catch (error) {
+      setErr(error.message || "Could not reach the sign-in service. Check the server and MongoDB, then try again.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const quick = db?.accounts.filter((x) => ["employee", "admin"].includes(x.username)).map((x) => [
-    x.role === "employee" ? "Employee" : x.role === "admin" ? "Admin" : "Superadmin",
+  const quick = db?.accounts.filter((x) => x.role === "admin" && x.username === "admin").map((x) => [
+    "Admin",
     x.username,
     x.password,
   ]) || [];
@@ -44,6 +99,7 @@ export default function Login() {
                 : <button className="download-card" key={label} type="button" disabled title="Download link not configured">{content}</button>;
             })}
           </div>
+          {resourcesError && <p className="callout warn" role="alert">{resourcesError}</p>}
         </div>
       </section>
       <section className="roles">
@@ -61,7 +117,11 @@ export default function Login() {
           <Link className="btn demo-form-link" href="/demo-videos"><Icon n="video" />Watch demo videos</Link>
           <div className="demo">
             <span>Demo accounts. Tap one to fill the form:</span>
-            <div className="chips">{quick.map(([l, k, password]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(password); setErr(""); }}>{l}</button>)}</div>
+            <div className="chips">
+              {demoEmployee && <button type="button" className="chip" onClick={() => { setU(demoEmployee.username); setP(demoEmployee.password); setErr(""); }}>Employee</button>}
+              {quick.map(([l, k, password]) => <button type="button" key={k} className="chip" onClick={() => { setU(k); setP(password); setErr(""); }}>{l}</button>)}
+            </div>
+            {demoError && <small className="callout warn" role="alert">{demoError}</small>}
             <small className="muted">Demo only: passwords are stored in this browser, not on a secure authentication server.</small>
           </div>
         </form>

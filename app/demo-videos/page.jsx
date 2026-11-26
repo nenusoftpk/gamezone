@@ -5,7 +5,7 @@ import { getDemoVideoSource } from "@/lib/resources";
 import { Icon } from "@/components/ui";
 
 export default function DemoVideos() {
-  const { db } = useStore();
+  const { db, resourcesError } = useStore();
   const videos = db?.resources?.videos || [];
   return (
     <main className="public-videos">
@@ -14,7 +14,7 @@ export default function DemoVideos() {
         <h1>Gaming Zone demo videos</h1>
         <p>Explore tutorials and product demos from the Gaming Zone team.</p>
       </header>
-      {!db ? <p className="empty">Loading videos…</p> : videos.length === 0
+      {resourcesError ? <p className="callout warn" role="alert">{resourcesError}</p> : !db ? <p className="empty">Loading videos…</p> : videos.length === 0
         ? <p className="empty">Demo videos will appear here soon.</p>
         : <div className="video-grid">{videos.map((video) => {
           const source = getDemoVideoSource(video.url);

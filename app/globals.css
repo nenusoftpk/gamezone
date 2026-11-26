@@ -100,6 +100,7 @@ label{display:block;font-size:13px;font-weight:500;color:var(--mu);margin-top:14
 .lf{display:flex;flex-direction:column;width:100%;max-width:400px;max-height:100%;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:var(--brand) #f2f3f7;-webkit-overflow-scrolling:touch}.lf h2{font-size:28px}.lf .callout{margin:14px 0 0}
 .lf input{padding:12px 14px}.pw{position:relative;margin-top:6px}.pw input{margin:0!important;padding-right:64px}
 .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--brand);font-weight:600;padding:6px 8px}
+.account-password-submit{margin-top:16px}
 .btn.lg{padding:13px;margin-top:18px;font-size:16px}
 .demo{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);color:var(--mu);font-size:13px}
 .roles{align-items:center}

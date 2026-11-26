@@ -5,8 +5,10 @@ import { PageHead } from "@/components/ui";
 import { Banner } from "@/components/Art";
 
 export default function Platform() {
-  const { db } = useStore();
+  const { db, platformLoading, platformError } = useStore();
   if (!db) return null;
+  if (platformLoading) return <div className="boot">Loading platform data…</div>;
+  if (platformError) return <><PageHead title="Platform overview" sub="License revenue and branch health. Customer wallets are never shown here." /><div className="callout warn" role="alert">{platformError}</div></>;
   const now = Date.now(), act = db.tenants.filter((t) => t.on && t.status === "Active"), mrr = act.reduce((a, t) => a + db.plans[t.plan].price, 0);
   const month = db.payments.filter((p) => now - p.t < 30 * DAY).reduce((a, p) => a + p.amt, 0);
   const soon = [...db.tenants].filter((t) => t.on).sort((a, b) => a.renewsAt - b.renewsAt).slice(0, 4);

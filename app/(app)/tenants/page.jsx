@@ -7,38 +7,52 @@ import PayModal from "@/components/PayModal";
 const EMPTY_BRANCH = { name: "", owner: "", username: "", password: "", plan: "Basic", days: 14 };
 
 export default function Tenants() {
-  const { db, toggleTenant, setTenantPlan, createTenant, setAccountPassword, say } = useStore();
+  const { db, toggleTenant, setTenantPlan, createTenant, setBranchAdminPassword, say, platformLoading, platformError } = useStore();
   const [add, setAdd] = useState(false), [pay, setPay] = useState(null), [adminFor, setAdminFor] = useState(null);
   const [form, setForm] = useState(EMPTY_BRANCH), [newPassword, setNewPassword] = useState(""), [confirmPassword, setConfirmPassword] = useState(""), [error, setError] = useState("");
-  if (!db) return null;
+  if (!db || platformLoading) return <div className="boot">Loading platform data…</div>;
+  if (platformError) return <><PageHead title="Branches" sub="Every gaming business on the platform, with its plan and access" /><div className="callout warn" role="alert">{platformError}</div></>;
   const tone = { Active: "live", Trial: "paused", Suspended: "low" };
   const days = (t) => Math.ceil((t - Date.now()) / DAY);
-  const adminAccount = (tenantId) => db.accounts.find((account) => account.role === "admin" && account.tenantId === tenantId);
-  const submitBranch = () => {
-    if (db.accounts.some((account) => account.username.toLowerCase() === form.username.trim().toLowerCase())) return setError("That username is already in use.");
+  const adminAccount = (tenantId) => db.branchAdmins.find((account) => String(account.tenantId) === String(tenantId));
+  const submitBranch = async () => {
+    if (db.branchAdmins.some((account) => account.username.toLowerCase() === form.username.trim().toLowerCase())
+      || db.accounts.some((account) => account.role === "employee" && account.username.toLowerCase() === form.username.trim().toLowerCase())) return setError("That username is already in use.");
     if (form.password.length < 8) return setError("Password must be at least 8 characters.");
-    createTenant({ ...form, name: form.name.trim(), owner: form.owner.trim(), username: form.username.trim(), days: +form.days });
+    const result = await createTenant({ ...form, name: form.name.trim(), owner: form.owner.trim(), username: form.username.trim(), days: +form.days });
+    if (result) return setError(result);
     setAdd(false); setForm(EMPTY_BRANCH); setError(""); say("Branch created with a trial");
   };
-  const submitPassword = () => {
+  const submitPassword = async () => {
     if (newPassword.length < 8) return setError("Password must be at least 8 characters.");
     if (newPassword !== confirmPassword) return setError("Passwords do not match.");
-    const result = setAccountPassword(adminAccount(adminFor.id)?.id, newPassword);
+    const result = await setBranchAdminPassword(adminFor.id, newPassword);
     if (result) return setError(result);
     setAdminFor(null); setNewPassword(""); setConfirmPassword(""); setError(""); say("Branch admin password changed");
+  };
+  const changePlan = async (tenant, plan) => {
+    const result = await setTenantPlan(tenant.id, plan);
+    if (result) setError(result);
+    else { setError(""); say("Plan changed"); }
+  };
+  const changeAccess = async (tenant) => {
+    const result = await toggleTenant(tenant.id);
+    if (result) setError(result);
+    else { setError(""); say(tenant.on ? "Branch suspended" : "Branch reactivated"); }
   };
   const closeAdminPassword = () => { setAdminFor(null); setNewPassword(""); setConfirmPassword(""); setError(""); };
   return (
     <>
       <PageHead title="Branches" sub="Every gaming business on the platform, with its plan and access"><button className="btn primary" onClick={() => { setError(""); setAdd(true); }}>New branch</button></PageHead>
+      {error && !add && !adminFor && <div className="callout warn" role="alert">{error}</div>}
       <div className="panel"><table>
         <thead><tr><th>Business</th><th>Owner</th><th>Admin login</th><th>Plan</th><th>Status</th><th>Renews</th><th>Access</th><th /></tr></thead>
         <tbody>{db.tenants.map((t) => (
           <tr key={t.id}><td><b>{t.name}</b></td><td>{t.owner}</td><td>{adminAccount(t.id)?.username || "—"}</td>
-            <td><select value={t.plan} onChange={(e) => { setTenantPlan(t.id, e.target.value); say("Plan changed"); }}>{Object.keys(db.plans).map((p) => <option key={p}>{p}</option>)}</select></td>
+            <td><select value={t.plan} onChange={(e) => changePlan(t, e.target.value)}>{Object.keys(db.plans).map((p) => <option key={p}>{p}</option>)}</select></td>
             <td><span className={"badge " + tone[t.status]}>{t.status === "Trial" ? `Trial · ${Math.max(0, days(t.renewsAt))} days left` : t.status}</span></td>
             <td>{dateStr(t.renewsAt)}</td>
-            <td><button className={"switch" + (t.on ? " on" : "")} onClick={() => { toggleTenant(t.id); say(t.on ? "Branch suspended" : "Branch reactivated"); }} aria-label={`Toggle ${t.name}`} /></td>
+            <td><button className={"switch" + (t.on ? " on" : "")} onClick={() => changeAccess(t)} aria-label={`Toggle ${t.name}`} /></td>
             <td className="r"><button className="btn sm" onClick={() => { setAdminFor(t); setError(""); }}>Admin password</button> <button className="btn sm" onClick={() => setPay(t.id)}>Record payment</button></td>
           </tr>))}</tbody>
       </table></div>

@@ -19,6 +19,19 @@ npm run build && npm start
 - `lib/store.jsx` demo data store (localStorage) and billing logic: 30-minute rates include 5 minutes grace, hourly rates include 10 minutes grace, and subsequent blocks are charged in 30-minute increments; each session keeps its starting rates
 - `components/` Shell, Modal/Icons, TopUp
 
+## Superadmin authentication (MongoDB)
+Superadmin sign-in is verified against a MongoDB account. Branch records, plans, license payments, public downloads, demo videos, and platform audit entries are stored in MongoDB. Branch admin credentials are hashed and verified against MongoDB; employee demo accounts and branch operational data remain in browser localStorage.
+
+1. Copy `.env.example` to `.env.local`.
+2. Set `SUPERADMIN_PASSWORD` to a unique password with at least 12 characters.
+3. Replace `AUTH_SECRET` with a random value of at least 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+4. Ensure MongoDB is running locally, or set `MONGODB_URI` to your MongoDB connection string.
+5. Restart the Next.js server. The first superadmin login creates the MongoDB account with a bcrypt-hashed password; later logins use the stored account. The first platform visit migrates the existing browser's branch, plan, payment, resource, audit, and branch-admin data into MongoDB. Subsequent superadmin page updates use MongoDB as the source of truth.
+
+The MongoDB auth session is stored in an HTTP-only cookie and protects superadmin platform routes. Superadmin and branch-admin password changes are saved in MongoDB. This migration does not move customers, stations, sessions, employees, or other branch operational data out of localStorage.
+
+The Employee demo button uses `DEMO_EMPLOYEE_USERNAME` and `DEMO_EMPLOYEE_PASSWORD` from the server environment. These are returned to the public login page to support the demo button, so configure demo-only credentials and do not use real staff credentials.
+
 ## Connecting a real backend
 Replace the actions in `lib/store.jsx` with calls to your Express/MySQL API
 (`/api/sessions/start`, `/api/wallet/topups`, ...). Billing must be calculated on the server;

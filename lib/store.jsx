@@ -95,7 +95,6 @@ const seed = () => {
 };
 
 const initialAccounts = (tenants) => [
-  { id: "superadmin", username: "superadmin", password: "super123", role: "superadmin", name: "Platform Team", active: true },
   ...tenants.map((tenant, i) => ({
     id: `branch-admin-${tenant.id}`,
     username: ["admin", "playhub", "joystick", "levelup"][i] || `admin${tenant.id}`,
@@ -150,8 +149,11 @@ const hydrate = (stored) => {
     }
   });
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
-  const platformAccount = d.accounts.find((account) => account.id === "superadmin");
-  if (platformAccount?.username === "super" && platformAccount.password === "super123") platformAccount.username = "superadmin";
+  d.platformReady = false;
+  if (!Array.isArray(d.branchAdminBootstrap)) {
+    d.branchAdminBootstrap = d.accounts.filter((account) => account.role === "admin").map((account) => ({ ...account }));
+  }
+  d.accounts = d.accounts.filter((account) => account.role !== "superadmin");
   const firstEmployeeAccount = d.accounts.find((account) => account.id === `employee-${EMP[0]?.id}`);
   if (firstEmployeeAccount?.username === "hina" && firstEmployeeAccount.password === "hina123") {
     firstEmployeeAccount.username = "employee";
@@ -185,10 +187,80 @@ export function useNow() {
 export function StoreProvider({ children }) {
   const [db, setDb] = useState(null);
   const [toast, setToast] = useState("");
+  const [platformLoading, setPlatformLoading] = useState(false);
+  const [platformError, setPlatformError] = useState("");
+  const [resourcesError, setResourcesError] = useState("");
   useEffect(() => {
     try { setDb(hydrate(JSON.parse(localStorage.getItem("gz-demo-v2")))); } catch { setDb(hydrate(null)); }
   }, []);
   useEffect(() => { if (db) localStorage.setItem("gz-demo-v2", JSON.stringify(db)); }, [db]);
+  const applyPlatformData = useCallback((data) => {
+    setDb((current) => current && ({
+      ...current,
+      ...data,
+      accounts: current.accounts.filter((account) => account.role !== "admin" && account.role !== "superadmin"),
+      branchAdminBootstrap: [],
+      platformReady: true,
+    }));
+  }, []);
+  const loadPlatformData = useCallback(async (localState) => {
+    const request = async (url, options) => {
+      const response = await fetch(url, options);
+      let result;
+      try { result = await response.json(); } catch { throw new Error("The platform service returned an invalid response."); }
+      if (!response.ok) throw new Error(result.error || "Could not load platform data.");
+      return result;
+    };
+    let result = await request("/api/platform", { cache: "no-store" });
+    if (!result.initialized) {
+      const branchAdminAccounts = localState.branchAdminBootstrap?.length
+        ? localState.branchAdminBootstrap
+        : localState.accounts.filter((account) => account.role === "admin");
+      result = await request("/api/platform/bootstrap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: {
+            tenants: localState.tenants || [],
+            plans: localState.plans || {},
+            payments: localState.payments || [],
+            resources: localState.resources || { mobileUrl: "", desktopUrl: "", videos: [] },
+            platformAudit: localState.platformAudit || [],
+          },
+          adminAccounts: branchAdminAccounts,
+        }),
+      });
+    }
+    if (!result.initialized || !result.data) throw new Error("Platform data has not been initialized.");
+    applyPlatformData(result.data);
+    setPlatformError("");
+    return result.data;
+  }, [applyPlatformData]);
+  const platformRole = db?.user?.role, platformUserId = db?.user?.id;
+  useEffect(() => {
+    if (platformRole !== "superadmin" || db?.platformReady) return;
+    setPlatformLoading(true);
+    setPlatformError("");
+    loadPlatformData(db)
+      .catch((error) => setPlatformError(error.message || "Could not load platform data."))
+      .finally(() => setPlatformLoading(false));
+  }, [platformRole, platformUserId, db?.platformReady, loadPlatformData]);
+  useEffect(() => {
+    if (!db || platformRole === "superadmin") return;
+    let current = true;
+    fetch("/api/public/resources", { cache: "no-store" })
+      .then(async (response) => {
+        let result;
+        try { result = await response.json(); } catch { throw new Error("The public resources service returned an invalid response."); }
+        if (!response.ok) throw new Error(result.error || "Could not load public resources.");
+        if (current) {
+          setDb((value) => value && ({ ...value, resources: result.resources }));
+          setResourcesError("");
+        }
+      })
+      .catch((error) => { if (current) setResourcesError(error.message || "Could not load public resources."); });
+    return () => { current = false; };
+  }, [Boolean(db), platformRole]);
   const say = useCallback((m) => { setToast(m); setTimeout(() => setToast(""), 2400); }, []);
   const up = (fn) => setDb((d) => fn(structuredClone(d)));
   const who = (d) => d.user?.name || "—";
@@ -203,12 +275,28 @@ export function StoreProvider({ children }) {
     if (account.role === "employee" && !db.employees.find((x) => x.id === account.employeeId && x.on)) return null;
     return account;
   };
-  const changeOwnPassword = (current, next) => {
-    const account = db?.accounts.find((x) => x.id === db.user?.id);
-    if (!account || account.password !== current) return "Current password is incorrect.";
+  const changeOwnPassword = async (current, next) => {
+    const isSuperadmin = db?.user?.role === "superadmin";
+    const account = isSuperadmin ? null : db?.accounts.find((x) => x.id === db.user?.id);
+    if (!isSuperadmin && !account) return "The signed-in account could not be found.";
+    if (isSuperadmin) {
+      try {
+        const response = await fetch("/api/auth/superadmin/password", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current, next }),
+        });
+        const result = await response.json();
+        if (!response.ok) return result.error || "Could not update the superadmin password.";
+      } catch {
+        return "Could not reach the superadmin password service. Try again.";
+      }
+    } else if (account.password !== current) {
+      return "Current password is incorrect.";
+    }
     up((d) => {
-      d.accounts.find((x) => x.id === account.id).password = next;
-      if (account.role === "superadmin") plog(d, "Password changed", "Platform account");
+      if (account) d.accounts.find((x) => x.id === account.id).password = next;
+      if (isSuperadmin) plog(d, "Password changed", "Platform account");
       else log(d, "Password changed", "Own account");
       return d;
     });
@@ -228,11 +316,63 @@ export function StoreProvider({ children }) {
     });
     return null;
   };
+  const requestPlatformAction = async (action, payload) => {
+    if (db?.user?.role !== "superadmin") return "Only a superadmin can update platform data.";
+    try {
+      const response = await fetch("/api/platform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, payload }),
+      });
+      let result;
+      try { result = await response.json(); } catch { return "The platform service returned an invalid response."; }
+      if (!response.ok) return result.error || "Could not save platform changes.";
+      applyPlatformData(result.data);
+      return null;
+    } catch {
+      return "Could not reach the platform service. Check MongoDB and try again.";
+    }
+  };
 
   const api = {
     db, say, nextNo, authenticate, changeOwnPassword, setAccountPassword,
-    login: (account) => up((d) => { d.user = { id: account.id, role: account.role, name: account.name, tenantId: account.tenantId }; return d; }),
-    logout: () => up((d) => { d.user = null; return d; }),
+    platformLoading, platformError, resourcesError,
+    login: async (account) => {
+      if (account.role === "superadmin") {
+        setPlatformLoading(true);
+        setPlatformError("");
+        try {
+          await loadPlatformData(db);
+        } catch (error) {
+          setPlatformError(error.message || "Could not load platform data.");
+          throw error;
+        } finally {
+          setPlatformLoading(false);
+        }
+      }
+      up((d) => {
+        if (account.role === "admin") {
+          d.employees.forEach((employee) => { employee.tenantId = String(employee.tenantId); });
+          d.accounts.forEach((entry) => {
+            if (entry.role === "employee") entry.tenantId = String(entry.tenantId);
+          });
+        }
+        d.user = {
+          id: account.id,
+          role: account.role,
+          name: account.name,
+          tenantId: account.tenantId === undefined ? undefined : String(account.tenantId),
+        };
+        return d;
+      });
+    },
+    logout: async () => {
+      if (db?.user?.role === "superadmin") {
+        const response = await fetch("/api/auth/logout", { method: "POST" });
+        if (!response.ok) throw new Error("The superadmin session could not be cleared.");
+      }
+      up((d) => { d.user = null; return d; });
+    },
     topUp: (customerId, amount, method, ref, no) => up((d) => {
       cust(d, customerId).balance += amount;
       d.ledger.unshift({ id: "L" + Date.now(), no, t: Date.now(), customerId, type: "topup", amount, method, ref, by: who(d) });
@@ -516,12 +656,25 @@ export function StoreProvider({ children }) {
       return true;
     },
     // platform (superadmin)
-    createTenant: (f) => up((d) => {
-      const id = Date.now();
-      d.tenants.push({ id, name: f.name, owner: f.owner, plan: f.plan, status: "Trial", renewsAt: Date.now() + f.days * DAY, on: true });
-      d.accounts.push({ id: `branch-admin-${id}`, username: f.username, password: f.password, role: "admin", name: f.owner, tenantId: id, active: true });
-      plog(d, "Branch created", `${f.name} · ${f.plan} · ${f.days}-day trial`); return d;
-    }),
+    createTenant: (form) => requestPlatformAction("tenant.create", form),
+    toggleTenant: (id) => requestPlatformAction("tenant.toggle", { tenantId: id }),
+    setTenantPlan: (id, plan) => requestPlatformAction("tenant.plan", { tenantId: id, plan }),
+    setBranchAdminPassword: (tenantId, password) => requestPlatformAction("tenant.adminPassword", { tenantId, password }),
+    recordPayment: (tenantId, _amount, method, ref) => requestPlatformAction("payment.record", { tenantId, method, ref }),
+    setPlanPrice: (plan, patch) => requestPlatformAction("plan.update", { name: plan, patch }),
+    updatePublicDownloads: (mobileUrl, desktopUrl) => {
+      if (db?.user?.role !== "superadmin") return Promise.resolve("Only a superadmin can update public downloads.");
+      if ([mobileUrl, desktopUrl].some((url) => url && !isSecureWebUrl(url.trim()))) return Promise.resolve("Download links must be valid HTTPS URLs.");
+      return requestPlatformAction("resources.downloads", { mobileUrl: mobileUrl.trim(), desktopUrl: desktopUrl.trim() });
+    },
+    saveDemoVideo: (id, title, url) => {
+      const cleanTitle = title.trim(), cleanUrl = url.trim();
+      if (db?.user?.role !== "superadmin") return Promise.resolve("Only a superadmin can manage demo videos.");
+      if (!cleanTitle || cleanTitle.length > 100) return Promise.resolve("Enter a video title of 1–100 characters.");
+      if (!getDemoVideoSource(cleanUrl)) return Promise.resolve("Use a secure YouTube, Vimeo, or direct MP4, WebM, or Ogg video URL.");
+      return requestPlatformAction("resources.video.save", { id, title: cleanTitle, url: cleanUrl });
+    },
+    deleteDemoVideo: (id) => requestPlatformAction("resources.video.delete", { id }),
     createEmployee: (f) => up((d) => {
       const id = Date.now();
       d.employees.push({ id, name: f.name, role: "Cashier", shift: "Unassigned", limit: 300, on: true, tenantId: d.user.tenantId });
@@ -536,55 +689,6 @@ export function StoreProvider({ children }) {
       if (account) account.active = employee.on;
       return d;
     }),
-    toggleTenant: (id) => up((d) => {
-      const t = d.tenants.find((x) => x.id === id); t.on = !t.on; t.status = t.on ? "Active" : "Suspended";
-      plog(d, t.on ? "Branch reactivated" : "Branch suspended", t.name); return d;
-    }),
-    setTenantPlan: (id, plan) => up((d) => { const t = d.tenants.find((x) => x.id === id); t.plan = plan; plog(d, "Plan changed", `${t.name} → ${plan}`); return d; }),
-    recordPayment: (tenantId, amt, method, ref) => up((d) => {
-      const t = d.tenants.find((x) => x.id === tenantId);
-      d.payments.unshift({ id: Date.now(), tenantId, amt, t: Date.now(), method, ref });
-      t.status = "Active"; t.on = true; t.renewsAt = Math.max(t.renewsAt, Date.now()) + 30 * DAY;
-      plog(d, "Payment recorded", `${t.name} · Rs ${amt.toLocaleString()} (${method})`); return d;
-    }),
-    setPlanPrice: (plan, patch) => up((d) => { Object.assign(d.plans[plan], patch); plog(d, "Plan updated", `${plan}: Rs ${d.plans[plan].price}`); return d; }),
-    updatePublicDownloads: (mobileUrl, desktopUrl) => {
-      if (db?.user?.role !== "superadmin") return "Only a superadmin can update public downloads.";
-      if ([mobileUrl, desktopUrl].some((url) => url && !isSecureWebUrl(url.trim()))) return "Download links must be valid HTTPS URLs.";
-      up((d) => {
-        d.resources.mobileUrl = mobileUrl.trim();
-        d.resources.desktopUrl = desktopUrl.trim();
-        plog(d, "Download links updated", "Public app downloads");
-        return d;
-      });
-      return null;
-    },
-    saveDemoVideo: (id, title, url) => {
-      const cleanTitle = title.trim(), cleanUrl = url.trim();
-      if (db?.user?.role !== "superadmin") return "Only a superadmin can manage demo videos.";
-      if (!cleanTitle || cleanTitle.length > 100) return "Enter a video title of 1–100 characters.";
-      if (!getDemoVideoSource(cleanUrl)) return "Use a secure YouTube, Vimeo, or direct MP4, WebM, or Ogg video URL.";
-      if (id && !db.resources.videos.some((video) => video.id === id)) return "That demo video no longer exists.";
-      up((d) => {
-        const existing = d.resources.videos.find((video) => video.id === id);
-        if (existing) Object.assign(existing, { title: cleanTitle, url: cleanUrl });
-        else d.resources.videos.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: cleanTitle, url: cleanUrl });
-        plog(d, id ? "Demo video updated" : "Demo video added", cleanTitle);
-        return d;
-      });
-      return null;
-    },
-    deleteDemoVideo: (id) => {
-      if (db?.user?.role !== "superadmin") return "Only a superadmin can manage demo videos.";
-      const video = db.resources.videos.find((entry) => entry.id === id);
-      if (!video) return "That demo video no longer exists.";
-      up((d) => {
-        d.resources.videos = d.resources.videos.filter((entry) => entry.id !== id);
-        plog(d, "Demo video removed", video.title);
-        return d;
-      });
-      return null;
-    },
     reset: () => { localStorage.removeItem("gz-demo-v2"); setDb(hydrate(seed())); },
   };
   return <Ctx.Provider value={api}>{children}{toast && <div className="toast" role="status">{toast}</div>}</Ctx.Provider>;

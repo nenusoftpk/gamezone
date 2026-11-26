@@ -6,38 +6,56 @@ import { Icon, PageHead } from "@/components/ui";
 const EMPTY_VIDEO = { id: "", title: "", url: "" };
 
 export default function PublicResources() {
-  const { db, updatePublicDownloads, saveDemoVideo, deleteDemoVideo, say } = useStore();
+  const { db, updatePublicDownloads, saveDemoVideo, deleteDemoVideo, say, platformLoading, platformError } = useStore();
   const [mobileUrl, setMobileUrl] = useState(null);
   const [desktopUrl, setDesktopUrl] = useState(null);
   const [video, setVideo] = useState(EMPTY_VIDEO);
   const [downloadError, setDownloadError] = useState("");
   const [videoError, setVideoError] = useState("");
+  const [saving, setSaving] = useState(false);
   if (!db) return null;
+  if (platformLoading) return <div className="boot">Loading platform data…</div>;
+  if (platformError) return <><PageHead title="Public downloads & demos" sub="Manage the app links and demo videos shown before sign-in." /><div className="callout warn" role="alert">{platformError}</div></>;
   const mobile = mobileUrl === null ? db.resources.mobileUrl : mobileUrl;
   const desktop = desktopUrl === null ? db.resources.desktopUrl : desktopUrl;
-  const submitDownloads = (event) => {
+  const submitDownloads = async (event) => {
     event.preventDefault();
-    const result = updatePublicDownloads(mobile, desktop);
-    if (result) return setDownloadError(result);
-    setMobileUrl(null);
-    setDesktopUrl(null);
-    setDownloadError("");
-    say("Public download links saved");
+    setSaving(true);
+    try {
+      const result = await updatePublicDownloads(mobile, desktop);
+      if (result) return setDownloadError(result);
+      setMobileUrl(null);
+      setDesktopUrl(null);
+      setDownloadError("");
+      say("Public download links saved");
+    } finally {
+      setSaving(false);
+    }
   };
-  const submitVideo = (event) => {
+  const submitVideo = async (event) => {
     event.preventDefault();
-    const result = saveDemoVideo(video.id || null, video.title, video.url);
-    if (result) return setVideoError(result);
-    setVideo(EMPTY_VIDEO);
-    setVideoError("");
-    say(video.id ? "Demo video updated" : "Demo video added");
+    setSaving(true);
+    try {
+      const result = await saveDemoVideo(video.id || null, video.title, video.url);
+      if (result) return setVideoError(result);
+      setVideo(EMPTY_VIDEO);
+      setVideoError("");
+      say(video.id ? "Demo video updated" : "Demo video added");
+    } finally {
+      setSaving(false);
+    }
   };
-  const removeVideo = (id) => {
-    const result = deleteDemoVideo(id);
-    if (result) return setVideoError(result);
-    if (video.id === id) setVideo(EMPTY_VIDEO);
-    setVideoError("");
-    say("Demo video removed");
+  const removeVideo = async (id) => {
+    setSaving(true);
+    try {
+      const result = await deleteDemoVideo(id);
+      if (result) return setVideoError(result);
+      if (video.id === id) setVideo(EMPTY_VIDEO);
+      setVideoError("");
+      say("Demo video removed");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <>
@@ -50,7 +68,7 @@ export default function PublicResources() {
           <label>Desktop application download URL<input type="url" value={desktop} onChange={(event) => setDesktopUrl(event.target.value)} placeholder="https://…" /></label>
         </div>
         {downloadError && <div className="callout warn" role="alert">{downloadError}</div>}
-        <button className="btn primary resource-submit" type="submit"><Icon n="download" />Save download links</button>
+        <button className="btn primary resource-submit" type="submit" disabled={saving}><Icon n="download" />{saving ? "Saving…" : "Save download links"}</button>
       </form>
 
       <section className="panel pad resource-form">
@@ -62,7 +80,7 @@ export default function PublicResources() {
           {videoError && <div className="callout warn" role="alert">{videoError}</div>}
           <div className="resource-actions">
             {video.id && <button className="btn" type="button" onClick={() => { setVideo(EMPTY_VIDEO); setVideoError(""); }}>Cancel edit</button>}
-            <button className="btn primary" type="submit"><Icon n={video.id ? "edit" : "plus"} />{video.id ? "Save changes" : "Add video"}</button>
+            <button className="btn primary" type="submit" disabled={saving}><Icon n={video.id ? "edit" : "plus"} />{saving ? "Saving…" : video.id ? "Save changes" : "Add video"}</button>
           </div>
         </form>
       </section>
@@ -75,7 +93,7 @@ export default function PublicResources() {
               <tbody>{db.resources.videos.map((item) => <tr key={item.id}>
                 <td><b>{item.title}</b></td><td><a href={item.url} target="_blank" rel="noopener noreferrer">{item.url}</a></td>
                 <td className="r"><button className="btn sm" type="button" onClick={() => { setVideo(item); setVideoError(""); }}><Icon n="edit" size={15} />Edit</button>{" "}
-                  <button className="btn sm danger" type="button" onClick={() => removeVideo(item.id)}><Icon n="trash" size={15} />Remove</button></td>
+                  <button className="btn sm danger" type="button" disabled={saving} onClick={() => removeVideo(item.id)}><Icon n="trash" size={15} />Remove</button></td>
               </tr>)}</tbody>
             </table>
           </div>

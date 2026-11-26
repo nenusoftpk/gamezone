@@ -3,8 +3,10 @@ import { useStore, dateStr, timeStr } from "@/lib/store";
 import { PageHead } from "@/components/ui";
 
 export default function PlatformAudit() {
-  const { db } = useStore();
+  const { db, platformLoading, platformError } = useStore();
   if (!db) return null;
+  if (platformLoading) return <div className="boot">Loading platform data…</div>;
+  if (platformError) return <><PageHead title="Platform audit" sub="Every change to branches, plans and payments. Entries cannot be edited." /><div className="callout warn" role="alert">{platformError}</div></>;
   return (
     <>
       <PageHead title="Platform audit" sub="Every change to branches, plans and payments. Entries cannot be edited." />

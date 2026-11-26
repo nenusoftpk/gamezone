@@ -5,13 +5,15 @@ import { PageHead } from "@/components/ui";
 import PayModal from "@/components/PayModal";
 
 export default function Subs() {
-  const { db } = useStore(), [pay, setPay] = useState(false);
+  const { db, platformLoading, platformError } = useStore(), [pay, setPay] = useState(false);
   if (!db) return null;
+  if (platformLoading) return <div className="boot">Loading platform data…</div>;
+  if (platformError) return <><PageHead title="Payments" sub="Software license fees only. Customer wallets are never mixed in here." /><div className="callout warn" role="alert">{platformError}</div></>;
   const total = db.payments.reduce((a, p) => a + p.amt, 0), month = db.payments.filter((p) => Date.now() - p.t < 30 * DAY).reduce((a, p) => a + p.amt, 0);
   const overdue = db.tenants.filter((t) => !t.on);
   return (
     <>
-      <PageHead title="Payments" sub="Software license fees only. Customer wallets are never mixed in here."><button className="btn primary" onClick={() => setPay(true)}>Record payment</button></PageHead>
+      <PageHead title="Payments" sub="Software license fees only. Customer wallets are never mixed in here."><button className="btn primary" disabled={!db.tenants.length} onClick={() => setPay(true)}>Record payment</button></PageHead>
       <div className="kpis">
         <div className="kpi"><span>Last 30 days</span><b>{money(month)}</b><small>License payments</small></div>
         <div className="kpi"><span>All time</span><b>{money(total)}</b><small>{db.payments.length} payments</small></div>
