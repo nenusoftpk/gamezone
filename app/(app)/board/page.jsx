@@ -19,7 +19,7 @@ const defaultPlayerCount = (game) => {
   return options.includes(2) ? 2 : options[0];
 };
 
-function Card({ s, now, db, onStart, onEnd, onTop, onMove }) {
+function Card({ s, now, db, onStart, onEnd, onTop, onMove, onEditCustomer }) {
   const { pause } = useStore();
   const a = s.active, c = a && db.customers.find((x) => x.id === a.customerId);
   const rates = stationRates(s);
@@ -49,6 +49,7 @@ function Card({ s, now, db, onStart, onEnd, onTop, onMove }) {
         {s.status !== "ok" ? null : !a ? <button className="btn primary full" onClick={() => onStart(s)}>Start session</button> : <>
           <button className="btn" onClick={() => pause(s.id)}><Icon n={a.pausedAt ? "play" : "pause"} size={15} />{a.pausedAt ? "Resume" : "Pause"}</button>
           <button className="btn" onClick={() => onTop(c.id)}><Icon n="plus" size={15} />Top-up</button>
+          {onEditCustomer && <button className="btn" onClick={() => onEditCustomer(s)}>Edit customer</button>}
           <button className="btn" onClick={() => onMove(s)}>Move</button>
           <button className="btn danger" onClick={() => onEnd(s)}>End</button>
         </>}
@@ -58,13 +59,15 @@ function Card({ s, now, db, onStart, onEnd, onTop, onMove }) {
 }
 
 export default function Board() {
-  const { db, start, end, move, checkoutSession, say } = useStore(), now = useNow();
+  const { db, start, end, move, editActiveCustomer, checkoutSession, say } = useStore(), now = useNow();
   const [f, setF] = useState("all"), [startFor, setStartFor] = useState(null), [endFor, setEndFor] = useState(null), [top, setTop] = useState(null), [mv, setMv] = useState(null), [to, setTo] = useState("");
+  const [customerFor, setCustomerFor] = useState(null), [customerId, setCustomerId] = useState("");
   const [checkoutId, setCheckoutId] = useState(null), [checkoutMethod, setCheckoutMethod] = useState("Cash"), [checkoutRef, setCheckoutRef] = useState("");
   const [checkoutReceipt, setCheckoutReceipt] = useState(null);
   const [form, setForm] = useState({ c: 0, g: GAMES[0], p: 2, rateUnit: "minute" });
   if (!db) return null;
   const mine = db.user.role === "employee", canCheckOut = mine || db.user.role === "admin";
+  const canEditCustomer = db.user.role === "admin";
   const games = db.gamesLibrary.map((game) => game.t);
   const selectedGame = db.gamesLibrary.find((game) => game.t === form.g);
   const availablePlayers = playerOptions(selectedGame?.p);
@@ -74,6 +77,10 @@ export default function Board() {
   const sessionRates = startFor && stationRates(startFor);
   const canStart = !!sc;
   const freeSt = db.stations.filter((s) => !s.active && s.status === "ok");
+  const openCustomerEdit = (station) => {
+    setCustomerFor(station);
+    setCustomerId(String(station.active.customerId));
+  };
   const today = new Date(now).toDateString();
   const todaySessions = db.sessions.filter((session) => new Date(session.t).toDateString() === today);
   const todayPlay = todaySessions.reduce((sum, session) => sum + session.amount, 0);
@@ -113,7 +120,7 @@ export default function Board() {
         </table></div>
       </section>}
       <div className="tabs">{[["all", "All stations"], ["live", "Playing"], ["free", "Available"]].map(([k, l]) => <button key={k} className={f === k ? "on" : ""} onClick={() => setF(k)}>{l}</button>)}</div>
-      <div className="stations">{list.map((s) => <Card key={s.id} s={s} now={now} db={db} onStart={(x) => { const game = db.gamesLibrary[0]; setStartFor(x); setForm({ c: db.customers[0].id, g: game?.t || GAMES[0], p: defaultPlayerCount(game), rateUnit: "minute" }); }} onEnd={setEndFor} onTop={setTop} onMove={(x) => { setMv(x); setTo(freeSt[0]?.id || ""); }} />)}</div>
+      <div className="stations">{list.map((s) => <Card key={s.id} s={s} now={now} db={db} onStart={(x) => { const game = db.gamesLibrary[0]; setStartFor(x); setForm({ c: db.customers[0].id, g: game?.t || GAMES[0], p: defaultPlayerCount(game), rateUnit: "minute" }); }} onEnd={setEndFor} onTop={setTop} onMove={(x) => { setMv(x); setTo(freeSt[0]?.id || ""); }} onEditCustomer={canEditCustomer ? openCustomerEdit : null} />)}</div>
 
       {startFor && <Modal title={`Start session · ${startFor.name}`} onClose={() => setStartFor(null)}
         foot={<><button className="btn" onClick={() => setStartFor(null)}>Cancel</button><button className="btn primary" disabled={!canStart} onClick={() => { start(startFor.id, +form.c, form.g, +form.p, "wallet", form.rateUnit); setStartFor(null); say("Session started"); }}>Start session</button></>}>
@@ -136,6 +143,17 @@ export default function Board() {
         foot={<><button className="btn" onClick={() => setMv(null)}>Cancel</button><button className="btn primary" disabled={!to} onClick={() => { move(mv.id, +to); setMv(null); say("Session moved. The original rate is kept."); }}>Move session</button></>}>
         {freeSt.length ? <label>New station<select value={to} onChange={(e) => setTo(e.target.value)}>{freeSt.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.room}</option>)}</select></label> : <div className="callout warn">No free station right now.</div>}
         <p className="muted" style={{ marginTop: 12 }}>The timer and the charge continue without a break.</p>
+      </Modal>}
+
+      {customerFor && <Modal title={`Edit customer · ${customerFor.name}`} onClose={() => setCustomerFor(null)}
+        foot={<><button className="btn" onClick={() => setCustomerFor(null)}>Cancel</button><button className="btn primary" disabled={!customerId || Number(customerId) === customerFor.active.customerId} onClick={() => {
+          if (editActiveCustomer(customerFor.id, Number(customerId))) {
+            setCustomerFor(null);
+            say("Session customer updated");
+          } else say("Unable to update session customer");
+        }}>Save customer</button></>}>
+        <label>Customer<select value={customerId} onChange={(event) => setCustomerId(event.target.value)}>{db.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {money(customer.balance)}</option>)}</select></label>
+        <div className="callout warn">The selected customer will be charged when this session ends.</div>
       </Modal>}
 
       {endFor && (() => { const a = endFor.active, c = db.customers.find((x) => x.id === a.customerId), t = Math.round(cost(a, now)), walletUsed = Math.min(c.balance, t), due = t - walletUsed; return (

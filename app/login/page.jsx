@@ -16,7 +16,7 @@ export default function Login() {
     if (!acc) return setErr("Username or password is incorrect. Check both and try again.");
     setErr(""); setBusy(true); login(acc); router.push(HOME[acc.role]);
   };
-  const quick = db?.accounts.filter((x) => ["hina", "admin", "super"].includes(x.username)).map((x) => [
+  const quick = db?.accounts.filter((x) => ["employee", "admin"].includes(x.username)).map((x) => [
     x.role === "employee" ? "Employee" : x.role === "admin" ? "Admin" : "Superadmin",
     x.username,
     x.password,
@@ -50,7 +50,7 @@ export default function Login() {
         <form className="lf" onSubmit={submit} noValidate>
           <h2>Welcome back</h2>
           <p className="muted">Sign in to manage your branch.</p>
-          <label>Username<input autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} placeholder="e.g. hina" autoFocus /></label>
+          <label>Username<input autoComplete="username" value={u} onChange={(e) => setU(e.target.value)} placeholder="e.g. employee" autoFocus /></label>
           <label>Password
             <div className="pw"><input type={show ? "text" : "password"} autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} placeholder="Your password" />
               <button type="button" className="eye" onClick={() => setShow(!show)} aria-label={show ? "Hide password" : "Show password"} aria-pressed={show}><Icon n={show ? "eyeOff" : "eye"} /></button></div>

@@ -95,7 +95,7 @@ const seed = () => {
 };
 
 const initialAccounts = (tenants) => [
-  { id: "superadmin", username: "super", password: "super123", role: "superadmin", name: "Platform Team", active: true },
+  { id: "superadmin", username: "superadmin", password: "super123", role: "superadmin", name: "Platform Team", active: true },
   ...tenants.map((tenant, i) => ({
     id: `branch-admin-${tenant.id}`,
     username: ["admin", "playhub", "joystick", "levelup"][i] || `admin${tenant.id}`,
@@ -107,8 +107,8 @@ const initialAccounts = (tenants) => [
   })),
   ...EMP.map((employee, i) => ({
     id: `employee-${employee.id}`,
-    username: ["hina", "zain", "maryam"][i] || `employee${employee.id}`,
-    password: ["hina123", "zain1234", "maryam123"][i] || "employee123",
+    username: i === 0 ? "employee" : ["hina", "zain", "maryam"][i] || `employee${employee.id}`,
+    password: i === 0 ? "emp123" : ["hina123", "zain1234", "maryam123"][i] || "employee123",
     role: "employee",
     name: employee.name,
     tenantId: tenants[0]?.id,
@@ -150,6 +150,13 @@ const hydrate = (stored) => {
     }
   });
   if (!d.accounts) d.accounts = initialAccounts(d.tenants || []);
+  const platformAccount = d.accounts.find((account) => account.id === "superadmin");
+  if (platformAccount?.username === "super" && platformAccount.password === "super123") platformAccount.username = "superadmin";
+  const firstEmployeeAccount = d.accounts.find((account) => account.id === `employee-${EMP[0]?.id}`);
+  if (firstEmployeeAccount?.username === "hina" && firstEmployeeAccount.password === "hina123") {
+    firstEmployeeAccount.username = "employee";
+    firstEmployeeAccount.password = "emp123";
+  }
   if (!d.employees) d.employees = EMP.map((employee) => ({ ...employee, tenantId: d.tenants?.[0]?.id }));
   const employeeNames = new Set([
     ...d.accounts.filter((account) => account.role === "employee").map((account) => account.name),
@@ -238,6 +245,40 @@ export function StoreProvider({ children }) {
       log(d, "Package sale", `${pkg.n} sold to ${cust(d, customerId).name} for Rs ${pkg.price}`); return d;
     }),
     addCustomer: (name, phone) => up((d) => { d.customers.push({ id: Date.now(), name, phone: phone || "—", balance: 0 }); log(d, "New customer", name); return d; }),
+    updateCustomer: (id, name, phone) => {
+      const customer = db?.customers.find((entry) => entry.id === id);
+      if (db?.user?.role !== "admin" || !customer || !name?.trim()) return false;
+      up((d) => {
+        const entry = cust(d, id);
+        if (!entry) return d;
+        const previousName = entry.name;
+        entry.name = name.trim();
+        entry.phone = phone?.trim() || "—";
+        log(d, "Customer updated", `${previousName} → ${entry.name}`);
+        return d;
+      });
+      return true;
+    },
+    deleteCustomer: (id) => {
+      const customer = db?.customers.find((entry) => entry.id === id);
+      if (db?.user?.role !== "admin" || !customer) return false;
+      up((d) => {
+        const entry = cust(d, id);
+        if (!entry) return d;
+        d.stations.forEach((station) => {
+          if (station.active?.customerId === id) station.active = null;
+        });
+        d.customers = d.customers.filter((item) => item.id !== id);
+        d.sessions = d.sessions.filter((session) => session.customerId !== id);
+        d.ledger = d.ledger.filter((item) => item.customerId !== id);
+        d.customerCredits = d.customerCredits.filter((credit) => credit.customerId !== id);
+        d.refunds = d.refunds.filter((refund) => refund.customerId !== id);
+        d.cafeOrders = d.cafeOrders.filter((order) => order.customerId !== id);
+        log(d, "Customer deleted", `${entry.name} · linked customer records removed`);
+        return d;
+      });
+      return true;
+    },
     addExpense: (category, description, amount) => {
       if (!STAFF_ROLES.includes(db?.user?.role) || !description.trim() || !Number.isFinite(amount) || amount <= 0) return false;
       up((d) => {
@@ -363,6 +404,21 @@ export function StoreProvider({ children }) {
       s.active = { customerId, game, players, billingMode, rateUnit, by: who(d), rate: rates.perHour, ratePerMinute: rates.perMinute, ratePer30Minutes: rates.per30Minutes, ratePerHour: rates.perHour, t0: Date.now(), pausedMs: 0, pausedAt: 0 };
       log(d, "Session start", `${s.name} · ${game} · ${cust(d, customerId).name}`); return d;
     }),
+    editActiveCustomer: (stationId, customerId) => {
+      const station = db?.stations.find((entry) => entry.id === stationId);
+      const customer = db?.customers.find((entry) => entry.id === customerId);
+      if (db?.user?.role !== "admin" || !station?.active || !Number.isInteger(customerId) || !customer || station.active.customerId === customerId) return false;
+      up((d) => {
+        const activeStation = d.stations.find((entry) => entry.id === stationId);
+        const nextCustomer = cust(d, customerId);
+        if (!activeStation?.active || !nextCustomer) return d;
+        const previousCustomer = cust(d, activeStation.active.customerId);
+        activeStation.active.customerId = customerId;
+        log(d, "Session customer changed", `${activeStation.name} · ${previousCustomer?.name || "Unknown"} → ${nextCustomer.name}`);
+        return d;
+      });
+      return true;
+    },
     pause: (stationId) => up((d) => {
       const a = d.stations.find((x) => x.id === stationId).active;
       if (a.pausedAt) { a.pausedMs += Date.now() - a.pausedAt; a.pausedAt = 0; } else a.pausedAt = Date.now();
