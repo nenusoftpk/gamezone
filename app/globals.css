@@ -22,6 +22,15 @@ nav{display:flex;flex-direction:column;gap:4px;flex:1}
 .btn:hover:not(:disabled){border-color:#c9cedd;transform:translateY(-1px)}
 .btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:0;box-shadow:0 6px 16px rgba(255,90,54,.3)}
 .btn.danger{color:var(--bad);border-color:#f3c3cc}.btn.sm{padding:6px 12px;font-size:13px}.btn.full{width:100%}
+.table-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;white-space:nowrap}
+.table-action{width:44px;height:44px;flex:0 0 44px;padding:0;border-radius:13px;box-shadow:0 1px 3px rgba(20,25,40,.07)}
+.table-action.admin-action{color:#5259a7;background:#f7f7ff;border-color:#e4e5fb}
+.table-action.payment-action{color:#08796c;background:#f2fbf8;border-color:#cfede5}
+.table-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 5px 12px rgba(20,25,40,.12)}
+.table-action.admin-action:hover:not(:disabled){background:#eeefff;border-color:#c9ccf3}
+.table-action.payment-action:hover:not(:disabled){background:#e5f7f2;border-color:#b4e3d6}
+.table-action.danger:hover:not(:disabled){background:#fff0f2;border-color:#f1b6c0;color:#b91c3c}
+.table-action:focus-visible{outline:3px solid rgba(82,89,167,.28);outline-offset:2px}
 .search,select,input{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#fff}.search{min-width:240px}
 .tabs{display:inline-flex;background:#e9ebf2;border-radius:12px;padding:4px;margin-bottom:20px}
 .tabs button{border:0;background:none;padding:7px 16px;border-radius:9px;font-weight:600;color:var(--mu)}.tabs .on{background:#fff;color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.1)}

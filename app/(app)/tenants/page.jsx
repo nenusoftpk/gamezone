@@ -1,14 +1,15 @@
 "use client";
 import { useState } from "react";
 import { useStore, dateStr, DAY } from "@/lib/store";
-import { Modal, PageHead } from "@/components/ui";
+import { Icon, Modal, PageHead } from "@/components/ui";
 import PayModal from "@/components/PayModal";
 
 const EMPTY_BRANCH = { name: "", owner: "", username: "", password: "", plan: "Basic", days: 14 };
 
 export default function Tenants() {
-  const { db, toggleTenant, setTenantPlan, createTenant, setBranchAdminPassword, say, platformLoading, platformError } = useStore();
+  const { db, toggleTenant, setTenantPlan, createTenant, setBranchAdminPassword, deleteTenant, say, platformLoading, platformError } = useStore();
   const [add, setAdd] = useState(false), [pay, setPay] = useState(null), [adminFor, setAdminFor] = useState(null);
+  const [deleteFor, setDeleteFor] = useState(null), [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState(EMPTY_BRANCH), [newPassword, setNewPassword] = useState(""), [confirmPassword, setConfirmPassword] = useState(""), [error, setError] = useState("");
   if (!db || platformLoading) return <div className="boot">Loading platform data…</div>;
   if (platformError) return <><PageHead title="Branches" sub="Every gaming business on the platform, with its plan and access" /><div className="callout warn" role="alert">{platformError}</div></>;
@@ -40,11 +41,23 @@ export default function Tenants() {
     if (result) setError(result);
     else { setError(""); say(tenant.on ? "Branch suspended" : "Branch reactivated"); }
   };
+  const submitDelete = async () => {
+    if (!deleteFor) return;
+    setDeleting(true);
+    try {
+      const result = await deleteTenant(deleteFor.id);
+      if (result) return setError(result);
+      setDeleteFor(null); setError(""); say("Branch and payment history deleted");
+    } finally {
+      setDeleting(false);
+    }
+  };
   const closeAdminPassword = () => { setAdminFor(null); setNewPassword(""); setConfirmPassword(""); setError(""); };
+  const closeDelete = () => { if (!deleting) { setDeleteFor(null); setError(""); } };
   return (
     <>
       <PageHead title="Branches" sub="Every gaming business on the platform, with its plan and access"><button className="btn primary" onClick={() => { setError(""); setAdd(true); }}>New branch</button></PageHead>
-      {error && !add && !adminFor && <div className="callout warn" role="alert">{error}</div>}
+      {error && !add && !adminFor && !deleteFor && <div className="callout warn" role="alert">{error}</div>}
       <div className="panel"><table>
         <thead><tr><th>Business</th><th>Owner</th><th>Admin login</th><th>Plan</th><th>Status</th><th>Renews</th><th>Access</th><th /></tr></thead>
         <tbody>{db.tenants.map((t) => (
@@ -52,11 +65,19 @@ export default function Tenants() {
             <td><select value={t.plan} onChange={(e) => changePlan(t, e.target.value)}>{Object.keys(db.plans).map((p) => <option key={p}>{p}</option>)}</select></td>
             <td><span className={"badge " + tone[t.status]}>{t.status === "Trial" ? `Trial · ${Math.max(0, days(t.renewsAt))} days left` : t.status}</span></td>
             <td>{dateStr(t.renewsAt)}</td>
-            <td><button className={"switch" + (t.on ? " on" : "")} onClick={() => changeAccess(t)} aria-label={`Toggle ${t.name}`} /></td>
-            <td className="r"><button className="btn sm" onClick={() => { setAdminFor(t); setError(""); }}>Admin password</button> <button className="btn sm" onClick={() => setPay(t.id)}>Record payment</button></td>
+            <td><button className={"switch" + (t.on ? " on" : "")} onClick={() => changeAccess(t)} aria-label={t.on ? `Suspend ${t.name}` : `Reactivate ${t.name}`} aria-pressed={t.on} title={t.on ? "Suspend branch" : "Reactivate branch"} /></td>
+            <td><div className="table-actions">
+              <button type="button" className="btn sm table-action admin-action" title="Change branch admin password" aria-label={`Change admin password for ${t.name}`} onClick={() => { setAdminFor(t); setError(""); }}><Icon n="shield" size={20} /></button>
+              <button type="button" className="btn sm table-action payment-action" title="Record branch payment" aria-label={`Record payment for ${t.name}`} onClick={() => setPay(t.id)}><Icon n="wallet" size={20} /></button>
+              <button type="button" className="btn sm danger table-action" title="Delete branch" aria-label={`Delete ${t.name} branch`} onClick={() => { setDeleteFor(t); setError(""); }}><Icon n="trash" size={20} /></button>
+            </div></td>
           </tr>))}</tbody>
       </table></div>
       {pay !== null && <PayModal tenantId={pay} onClose={() => setPay(null)} />}
+      {deleteFor && <Modal title={`Delete branch · ${deleteFor.name}`} onClose={closeDelete} foot={<><button className="btn" disabled={deleting} onClick={closeDelete}>Cancel</button><button className="btn danger" disabled={deleting} onClick={submitDelete}>{deleting ? "Deleting…" : "Delete branch"}</button></>}>
+        <p>This permanently deletes the branch, its admin login, and all associated payment history. The platform audit record will be retained. Branch operational data stored in browsers is not affected.</p>
+        {error && <div className="callout warn" role="alert">{error}</div>}
+      </Modal>}
       {add && <Modal title="New branch" onClose={() => setAdd(false)} foot={<><button className="btn" onClick={() => setAdd(false)}>Cancel</button>
         <button className="btn primary" disabled={!form.name.trim() || !form.owner.trim() || !form.username.trim() || form.password.length < 8} onClick={submitBranch}>Create branch</button></>}>
         <label>Business name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>

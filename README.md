@@ -29,6 +29,9 @@ Superadmin sign-in is verified against a MongoDB account. Branch records, plans,
 5. Restart the Next.js server. The first superadmin login creates the MongoDB account with a bcrypt-hashed password; later logins use the stored account. The first platform visit migrates the existing browser's branch, plan, payment, resource, audit, and branch-admin data into MongoDB. Subsequent superadmin page updates use MongoDB as the source of truth.
 
 The MongoDB auth session is stored in an HTTP-only cookie and protects superadmin platform routes. Superadmin and branch-admin password changes are saved in MongoDB. This migration does not move customers, stations, sessions, employees, or other branch operational data out of localStorage.
+Deleting a branch removes its MongoDB branch record, admin login, and associated payment history; the platform audit entry is retained. Browser-local operational data is not affected.
+Superadmins can edit a payment's amount, method, and reference or delete its record. These actions retain an audit entry and do not change branch renewal dates or access.
+Superadmins can create, update, and delete plans; a plan cannot be deleted while branches are assigned to it.
 
 The Employee and Admin demo buttons use `DEMO_EMPLOYEE_USERNAME`, `DEMO_EMPLOYEE_PASSWORD`, `DEMO_ADMIN_USERNAME`, and `DEMO_ADMIN_PASSWORD` from the server environment. These credentials are returned to the public login page to support the demo buttons, so configure demo-only credentials and do not use real staff credentials.
 

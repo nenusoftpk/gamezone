@@ -660,8 +660,13 @@ export function StoreProvider({ children }) {
     toggleTenant: (id) => requestPlatformAction("tenant.toggle", { tenantId: id }),
     setTenantPlan: (id, plan) => requestPlatformAction("tenant.plan", { tenantId: id, plan }),
     setBranchAdminPassword: (tenantId, password) => requestPlatformAction("tenant.adminPassword", { tenantId, password }),
+    deleteTenant: (tenantId) => requestPlatformAction("tenant.delete", { tenantId: String(tenantId) }),
     recordPayment: (tenantId, _amount, method, ref) => requestPlatformAction("payment.record", { tenantId, method, ref }),
+    updatePayment: (paymentId, patch) => requestPlatformAction("payment.update", { paymentId: String(paymentId), ...patch }),
+    deletePayment: (paymentId) => requestPlatformAction("payment.delete", { paymentId: String(paymentId) }),
+    createPlan: (plan) => requestPlatformAction("plan.create", plan),
     setPlanPrice: (plan, patch) => requestPlatformAction("plan.update", { name: plan, patch }),
+    deletePlan: (name) => requestPlatformAction("plan.delete", { name }),
     updatePublicDownloads: (mobileUrl, desktopUrl) => {
       if (db?.user?.role !== "superadmin") return Promise.resolve("Only a superadmin can update public downloads.");
       if ([mobileUrl, desktopUrl].some((url) => url && !isSecureWebUrl(url.trim()))) return Promise.resolve("Download links must be valid HTTPS URLs.");

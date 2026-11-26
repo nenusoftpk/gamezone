@@ -48,6 +48,7 @@ export async function POST(request) {
     if (!platform) return fail("Platform data has not been initialized.", 409);
     const data = platform.data;
     const payload = body.payload;
+    const hasPlan = (name) => typeof name === "string" && Object.prototype.hasOwnProperty.call(data.plans, name);
     let action, details;
 
     if (body.action === "tenant.create") {
@@ -56,7 +57,7 @@ export async function POST(request) {
       const cleanOwner = typeof owner === "string" ? owner.trim() : "";
       const cleanUsername = typeof username === "string" ? username.trim().toLowerCase() : "";
       if (!cleanName || !cleanOwner || !cleanUsername || cleanUsername.length > 64 || typeof password !== "string" || password.length < 8
-        || !data.plans[plan] || !Number.isInteger(Number(days)) || Number(days) < 0 || Number(days) > 3650) {
+        || !hasPlan(plan) || !Number.isInteger(Number(days)) || Number(days) < 0 || Number(days) > 3650) {
         return fail("Enter a valid branch name, owner, admin account, plan, and trial length.");
       }
       if (data.tenants.some((tenant) => tenant.name.toLowerCase() === cleanName.toLowerCase())
@@ -80,7 +81,7 @@ export async function POST(request) {
       details = tenant.name;
     } else if (body.action === "tenant.plan") {
       const tenant = data.tenants.find((item) => item.id === String(payload.tenantId));
-      if (!tenant || typeof payload.plan !== "string" || !data.plans[payload.plan]) return fail("Choose a valid branch and plan.");
+      if (!tenant || !hasPlan(payload.plan)) return fail("Choose a valid branch and plan.");
       tenant.plan = payload.plan;
       action = "Plan changed";
       details = `${tenant.name} → ${payload.plan}`;
@@ -92,12 +93,21 @@ export async function POST(request) {
       account.passwordHash = await bcrypt.hash(payload.password, 12);
       action = "Branch admin password changed";
       details = tenant.name;
+    } else if (body.action === "tenant.delete") {
+      const tenantId = typeof payload.tenantId === "string" ? payload.tenantId : "";
+      const tenant = data.tenants.find((item) => item.id === tenantId);
+      if (!tenant) return fail("That branch no longer exists.", 404);
+      data.tenants = data.tenants.filter((item) => item.id !== tenantId);
+      data.branchAdmins = data.branchAdmins.filter((account) => account.tenantId !== tenantId);
+      data.payments = data.payments.filter((payment) => payment.tenantId !== tenantId);
+      action = "Branch deleted";
+      details = `${tenant.name} · branch admin and payment history deleted`;
     } else if (body.action === "payment.record") {
       const tenant = data.tenants.find((item) => item.id === String(payload.tenantId));
       const method = typeof payload.method === "string" ? payload.method.trim() : "";
       const ref = typeof payload.ref === "string" ? payload.ref.trim() : "";
       const allowedMethods = ["Bank transfer", "Easypaisa", "JazzCash", "Cash"];
-      if (!tenant || !data.plans[tenant.plan]) return fail("Choose a valid branch.");
+      if (!tenant || !hasPlan(tenant.plan)) return fail("Choose a valid branch.");
       if (!allowedMethods.includes(method) || !ref || ref.length > 200) return fail("Enter a valid payment method and reference.");
       const now = Date.now();
       const amount = data.plans[tenant.plan].price;
@@ -107,8 +117,33 @@ export async function POST(request) {
       tenant.renewsAt = Math.max(tenant.renewsAt, now) + 30 * DAY;
       action = "Payment recorded";
       details = `${tenant.name} · Rs ${amount.toLocaleString()} (${method})`;
+    } else if (body.action === "payment.update") {
+      const paymentId = typeof payload.paymentId === "string" ? payload.paymentId : "";
+      const payment = data.payments.find((item) => String(item.id) === paymentId);
+      const amount = Number(payload.amount);
+      const method = typeof payload.method === "string" ? payload.method.trim() : "";
+      const ref = typeof payload.ref === "string" ? payload.ref.trim() : "";
+      const allowedMethods = ["Bank transfer", "Easypaisa", "JazzCash", "Cash"];
+      if (!payment) return fail("That payment record no longer exists.", 404);
+      if (!Number.isFinite(amount) || amount <= 0 || !allowedMethods.includes(method) || !ref || ref.length > 200) {
+        return fail("Enter a valid payment amount, method, and reference.");
+      }
+      payment.amt = amount;
+      payment.method = method;
+      payment.ref = ref;
+      const tenantName = data.tenants.find((tenant) => tenant.id === String(payment.tenantId))?.name || "Unknown branch";
+      action = "Payment updated";
+      details = `${tenantName} · Rs ${amount.toLocaleString()} (${method})`;
+    } else if (body.action === "payment.delete") {
+      const paymentId = typeof payload.paymentId === "string" ? payload.paymentId : "";
+      const index = data.payments.findIndex((item) => String(item.id) === paymentId);
+      if (index < 0) return fail("That payment record no longer exists.", 404);
+      const [payment] = data.payments.splice(index, 1);
+      const tenantName = data.tenants.find((tenant) => tenant.id === String(payment.tenantId))?.name || "Unknown branch";
+      action = "Payment deleted";
+      details = `${tenantName} · Rs ${payment.amt.toLocaleString()} (${payment.method})`;
     } else if (body.action === "plan.update") {
-      const plan = data.plans[payload.name];
+      const plan = hasPlan(payload.name) ? data.plans[payload.name] : null;
       const patch = payload.patch;
       if (!plan || !isRecord(patch) || !Number.isFinite(patch.price) || patch.price <= 0
         || !Number.isInteger(patch.stations) || patch.stations < 1
@@ -116,6 +151,29 @@ export async function POST(request) {
       Object.assign(plan, { price: patch.price, stations: patch.stations, employees: patch.employees });
       action = "Plan updated";
       details = `${payload.name}: Rs ${plan.price}`;
+    } else if (body.action === "plan.create") {
+      const name = typeof payload.name === "string" ? payload.name.trim() : "";
+      const price = Number(payload.price), stations = Number(payload.stations), employees = Number(payload.employees);
+      if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/.test(name)
+        || !Number.isFinite(price) || price <= 0
+        || !Number.isInteger(stations) || stations < 1
+        || !Number.isInteger(employees) || employees < 0) {
+        return fail("Enter a valid plan name, price, and limits.");
+      }
+      if (Object.keys(data.plans).some((existingName) => existingName.toLowerCase() === name.toLowerCase())) {
+        return fail("A plan with that name already exists.", 409);
+      }
+      data.plans[name] = { price, stations, employees };
+      action = "Plan created";
+      details = `${name}: Rs ${price.toLocaleString()}`;
+    } else if (body.action === "plan.delete") {
+      const name = typeof payload.name === "string" ? payload.name : "";
+      if (!hasPlan(name)) return fail("That plan no longer exists.", 404);
+      const assignedBranches = data.tenants.filter((tenant) => tenant.plan === name).length;
+      if (assignedBranches) return fail("Move all branches to another plan before deleting this plan.", 409);
+      delete data.plans[name];
+      action = "Plan deleted";
+      details = name;
     } else if (body.action === "resources.downloads") {
       const { mobileUrl, desktopUrl } = payload;
       if (typeof mobileUrl !== "string" || typeof desktopUrl !== "string"
